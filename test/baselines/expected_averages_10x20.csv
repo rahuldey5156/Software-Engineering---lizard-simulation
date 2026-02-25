@@ -1,0 +1,6 @@
+Timestep,# Fruit,# Insects,Avg distance to berry,# Lizards, Avg distance to insect
+0,5,17,4.412,3,3.667
+10,2,15,10.867,3,2.333
+20,4,12,3.667,3,4.000
+30,4,11,6.000,3,4.667
+40,6,9,5.111,3,6.000
