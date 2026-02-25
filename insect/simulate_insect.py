@@ -3,6 +3,7 @@
 Version 1.0, last updated in Feb 2026.
 '''
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from collections import deque
 import math
 import numpy as np
 import random
@@ -26,6 +27,43 @@ def simCommLineIntf():
     par.add_argument("-s","--seed",type=int,default=1,help="Random seed for initialising locations and movement")
     args=par.parse_args()
     sim(args.berry_prop,args.berry_growth,args.insect_prop,args.insect_move_ts,args.lizard_prop,args.lizard_move_ts,args.lizard_view_radius,args.output_ts,args.cutoff,args.landscape_file,args.seed)
+
+def find_nearest(lscape, grid_state, start_pos, target_val, max_dist=math.inf):
+    """
+    Standardized BFS to find the nearest target_val on the landscape.
+    Returns (dx, dy) of the first step toward the target, or (0, 0) if none found.
+    """
+    x, y = start_pos
+    dirs = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    
+    # Initialize queue with valid adjacent land cells
+    # Format: (current_x, current_y, starting_dx, starting_dy, distance)
+    queue = deque()
+    for dx, dy in dirs:
+        nx, ny = x + dx, y + dy
+        if lscape[nx, ny]:
+            queue.append((nx, ny, dx, dy, 1))
+            
+    visited = {(x, y)}
+
+    while queue:
+        cx, cy, first_dx, first_dy, dist = queue.popleft()
+        
+        if (cx, cy) in visited or dist > max_dist:
+            continue
+        visited.add((cx, cy))
+
+        # Check if we found the target (Berry=1, Insect=2, etc.)
+        if grid_state[cx, cy] == target_val:
+            return first_dx, first_dy
+
+        # Otherwise, explore neighbors
+        for dx, dy in dirs:
+            nx, ny = cx + dx, cy + dy
+            if lscape[nx, ny] and (nx, ny) not in visited:
+                queue.append((nx, ny, first_dx, first_dy, dist + 1))
+
+    return 0, 0 # No target found within range
 
 def sim(b,c,i,j,l,m,n,o,co,lfile,seed):
     print("Insect simulation",getVersion())
@@ -164,35 +202,14 @@ def sim(b,c,i,j,l,m,n,o,co,lfile,seed):
             for x in range(1,h+1):
                 for y in range(1,w+1):
                     if its[x,y] == 2:
-                        idirs=[(-1,0),(1,0),(0,-1),(0,1)]
-                        dirs=[]
-                        while idirs:
-                            idx=math.floor(random.random() * len(idirs))
-                            dirs+=[idirs.pop(idx)]
-                        q=[]
-                        vis=set((x,y))
-                        fnd=False
-                        for dx,dy in dirs:
-                            cx=x+dx
-                            cy=y+dy
-                            if lscape[cx,cy]:
-                                q+=[(cx,cy,dx,dy)]
-                        while q and not fnd:
-                            cx,cy,odx,ody=q.pop(0)
-                            if (cx,cy) in vis:
-                                continue
-                            vis.add((cx,cy))
-                            if its[cx,cy] == 1:
-                                fnd=True
-                                break
-                            for dx,dy in dirs:
-                                nx,ny=cx+dx,cy+dy
-                                if lscape[nx,ny] and (nx,ny) not in vis:
-                                    q.append((nx,ny,odx,ody))
-                        if fnd:
-                            nx,ny=x+odx,y+ody
-                        if not fnd or its[nx,ny] in (2,3) or its_nu[nx,ny] in (2,3):
-                            nx,ny=x,y
+                        # Use the new refactored function
+                        odx, ody = find_nearest(lscape, its, (x, y), 1)
+                        nx, ny = x + odx, y + ody
+                        
+                        # Safety check to prevent overlap (logic from original code)
+                        if (odx == 0 and ody == 0) or its[nx,ny] in (2,3) or its_nu[nx,ny] in (2,3):
+                            nx, ny = x, y
+                        
                         its_nu[x, y] = 0
                         its_nu[nx, ny] = 2
         
@@ -200,37 +217,13 @@ def sim(b,c,i,j,l,m,n,o,co,lfile,seed):
             for x in range(1,h+1):
                 for y in range(1,w+1):
                     if its[x,y] == 3:
-                        idirs=[(-1,0),(1,0),(0,-1),(0,1)]
-                        dirs=[]
-                        while idirs:
-                            idx=math.floor(random.random() * len(idirs))
-                            dirs+=[idirs.pop(idx)]
-                        q=[]
-                        vis=set((x,y))
-                        fnd=False
-                        for dx,dy in dirs:
-                            cx=x+dx
-                            cy=y+dy
-                            if lscape[cx,cy]:
-                                q+=[(cx,cy,dx,dy,1)]
-                        while q and not fnd:
-                            cx,cy,odx,ody,d=q.pop(0)
-                            if (cx,cy) in vis:
-                                continue
-                            if d > n:
-                                continue
-                            vis.add((cx,cy))
-                            if its[cx,cy] == 2:
-                                fnd=True
-                                break
-                            for dx,dy in dirs:
-                                nx,ny=cx+dx,cy+dy
-                                if lscape[nx,ny] and (nx,ny) not in vis:
-                                    q.append((nx,ny,odx,ody,d+1))
-                        if fnd:
-                            nx,ny=x+odx,y+ody
-                        if not fnd or its[nx,ny] in (1,3) or its_nu[nx,ny] in (1,3):
-                            nx,ny=x,y
+                        # Use the new refactored function with lizard view radius 'n'
+                        odx, ody = find_nearest(lscape, its, (x, y), 2, max_dist=n)
+                        nx, ny = x + odx, y + ody
+                        
+                        if (odx == 0 and ody == 0) or its[nx,ny] in (1,3) or its_nu[nx,ny] in (1,3):
+                            nx, ny = x, y
+                            
                         its_nu[x, y] = 0
                         its_nu[nx, ny] = 3
 
