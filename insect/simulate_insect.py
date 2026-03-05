@@ -74,11 +74,11 @@ def sim(b,c,i,j,l,m,n,o,co,lfile,seed):
         hh=h+2 # Height including halo
         lscape=np.zeros((hh,wh),int)
         row=1
-        for line in f.readlines():
-            values=line.split(" ")
-            # Read landscape into array,padding with halo values.
-            lscape[row]=[0]+[int(v) for v in values]+[0]
-            row += 1
+        for row, line in enumerate(f):
+            values=line.split()
+            # Only process the row if it actually contains values
+            if values:
+                lscape[row] = [0] + [int(v) for v in values if v.strip()] + [0]
 
     its=np.zeros((hh,wh),int)
     random.seed(seed)
