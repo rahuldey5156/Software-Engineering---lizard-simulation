@@ -14,7 +14,7 @@ BERRY = 1
 INSECT = 2
 LIZARD = 3
 
-# Halo border value (water)
+# Landscape cell constants
 WATER = 0
 LAND = 1
 
@@ -66,6 +66,294 @@ def simCommLineIntf():
         args.landscape_file,
         args.seed
     )
+
+
+def load_landscape(landscape_file):
+    """
+    Load a landscape from a file into a 2D NumPy array with a halo border of water.
+
+    The halo is a one-cell border of water (0) around all edges, used to avoid
+    boundary checks during simulation updates.
+
+    Args:
+        landscape_file (str): Path to the landscape input file.
+
+    Returns:
+        tuple: (landscape, width, height) where landscape is a 2D NumPy array
+               of shape (height+2, width+2), and width and height are the
+               dimensions of the landscape excluding the halo.
+    """
+    with open(landscape_file, "r") as f:
+        width, height = [int(v) for v in f.readline().split(" ")]
+        print("Width: {} Height: {}".format(width, height))
+
+        width_with_halo = width + 2
+        height_with_halo = height + 2
+
+        landscape = np.zeros((height_with_halo, width_with_halo), int)
+        row = 1
+        for line in f:
+            values = line.split()
+            if values:
+                landscape[row] = [0] + [int(v) for v in values] + [0]
+                row += 1
+
+    return landscape, width, height
+
+
+def initialise_grid(landscape, width, height, berry_prop, insect_prop, lizard_prop, seed):
+    """
+    Randomly initialise the entity grid with berries, insects and lizards on land cells.
+
+    For each land cell, entities are placed independently with the given probabilities.
+    If multiple entities are placed in the same cell, the last one wins (lizard > insect > berry).
+
+    Args:
+        landscape (np.ndarray): 2D landscape grid (1=land, 0=water) including halo.
+        width (int): Width of the landscape excluding halo.
+        height (int): Height of the landscape excluding halo.
+        berry_prop (float): Probability of a berry in each land cell.
+        insect_prop (float): Probability of an insect in each land cell.
+        lizard_prop (float): Probability of a lizard in each land cell.
+        seed (int): Random seed for reproducibility.
+
+    Returns:
+        np.ndarray: 2D grid of entity states with same shape as landscape.
+    """
+    grid = np.zeros((height + 2, width + 2), int)
+    random.seed(seed)
+    for row in range(1, height + 1):
+        for col in range(1, width + 1):
+            if landscape[row, col]:
+                if random.random() < berry_prop:
+                    grid[row, col] = BERRY
+                if random.random() < insect_prop:
+                    grid[row, col] = INSECT
+                if random.random() < lizard_prop:
+                    grid[row, col] = LIZARD
+    return grid
+
+
+def collect_positions(grid, landscape, width, height):
+    """
+    Collect the positions of all berries, insects and lizards on land cells.
+
+    Args:
+        grid (np.ndarray): 2D grid of entity states.
+        landscape (np.ndarray): 2D landscape grid (1=land, 0=water).
+        width (int): Width of the landscape excluding halo.
+        height (int): Height of the landscape excluding halo.
+
+    Returns:
+        tuple: (berry_positions, insect_positions, lizard_positions) each a list of (row, col) tuples.
+    """
+    berry_positions = []
+    insect_positions = []
+    lizard_positions = []
+
+    for row in range(1, height + 1):
+        for col in range(1, width + 1):
+            if landscape[row, col]:
+                if grid[row, col] == BERRY:
+                    berry_positions.append((row, col))
+                elif grid[row, col] == INSECT:
+                    insect_positions.append((row, col))
+                elif grid[row, col] == LIZARD:
+                    lizard_positions.append((row, col))
+
+    return berry_positions, insect_positions, lizard_positions
+
+
+def calculate_average_distance(searcher_positions, target_positions):
+    """
+    Calculate the average Manhattan distance from each searcher to its nearest target.
+
+    Manhattan distance is used as a simple straight-line approximation and does
+    not account for water cells.
+
+    Args:
+        searcher_positions (list): List of (row, col) positions of searching entities.
+        target_positions (list): List of (row, col) positions of target entities.
+
+    Returns:
+        float: Average distance to nearest target, or math.inf if no searchers or targets exist.
+    """
+    if not searcher_positions or not target_positions:
+        return math.inf
+
+    distances = []
+    for searcher in searcher_positions:
+        min_dist = math.inf
+        for target in target_positions:
+            dist = abs(searcher[0] - target[0]) + abs(searcher[1] - target[1])
+            if dist < min_dist:
+                min_dist = dist
+        distances.append(min_dist)
+
+    return sum(distances) / len(distances)
+
+
+def write_averages(timestep, num_berries, num_insects, avg_insect_dist, num_lizards, avg_lizard_dist):
+    """
+    Append a row of statistics to the averages CSV file.
+
+    Args:
+        timestep (int): Current simulation timestep.
+        num_berries (int): Total number of berries on the landscape.
+        num_insects (int): Total number of insects on the landscape.
+        avg_insect_dist (float): Average distance from each insect to nearest berry.
+        num_lizards (int): Total number of lizards on the landscape.
+        avg_lizard_dist (float): Average distance from each lizard to nearest insect.
+    """
+    with open("averages.csv", "a") as f:
+        f.write("{},{},{},{:.3f},{},{:.3f}\n".format(
+            timestep, num_berries, num_insects, avg_insect_dist,
+            num_lizards, avg_lizard_dist))
+
+
+def write_ppm(timestep, grid, landscape, width, height, lizard_view_radius):
+    """
+    Write a Plain PPM image file visualising the current simulation state.
+
+    Colour encoding per cell:
+        - Water:  RGB(0, 200, 255) bright blue-green
+        - Berry:  red channel = 150
+        - Insect: blue channel = 150
+        - Lizard: green channel = 200, with a dimming green diamond showing its view radius
+
+    Args:
+        timestep (int): Current simulation timestep, used to name the output file.
+        grid (np.ndarray): 2D grid of entity states.
+        landscape (np.ndarray): 2D landscape grid (1=land, 0=water).
+        width (int): Width of the landscape excluding halo.
+        height (int): Height of the landscape excluding halo.
+        lizard_view_radius (int): Maximum BFS search radius for lizard vision diamond.
+    """
+    berry_cols = np.zeros((height, width), int)
+    insect_cols = np.zeros((height, width), int)
+    lizard_cols = np.zeros((height, width), int)
+
+    for row in range(1, height + 1):
+        for col in range(1, width + 1):
+            if landscape[row, col]:
+                if grid[row, col] == BERRY:
+                    berry_cols[row - 1, col - 1] = 150
+                elif grid[row, col] == INSECT:
+                    insect_cols[row - 1, col - 1] = 150
+                elif grid[row, col] == LIZARD:
+                    lizard_cols[row - 1, col - 1] = 200
+                    # BFS outward to illuminate the lizard's view radius as a green diamond
+                    dirs = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+                    q = [(row + dr, col + dc, dr, dc, 1)
+                         for dr, dc in dirs if landscape[row + dr, col + dc]]
+                    visited = {(row, col)}
+                    while q:
+                        cx, cy, odx, ody, d = q.pop(0)
+                        if (cx, cy) in visited or d > lizard_view_radius:
+                            continue
+                        visited.add((cx, cy))
+                        lizard_cols[cx - 1, cy - 1] = max(lizard_cols[cx - 1, cy - 1], 100 / d)
+                        for dx, dy in dirs:
+                            nx, ny = cx + dx, cy + dy
+                            if landscape[nx, ny] and (nx, ny) not in visited:
+                                q.append((nx, ny, odx, ody, d + 1))
+
+    with open("map_{:04d}.ppm".format(timestep), "w") as f:
+        f.write("P3\n{} {}\n{}\n".format(width, height, 255))
+        for row in range(0, height):
+            for col in range(0, width):
+                if landscape[row + 1, col + 1]:
+                    f.write("{} {} {}\n".format(
+                        berry_cols[row, col],
+                        lizard_cols[row, col],
+                        insect_cols[row, col]))
+                else:
+                    f.write("{} {} {}\n".format(0, 200, 255))
+
+
+def grow_berries(grid, grid_next, landscape, width, height, berry_growth):
+    """
+    Randomly grow new berries on empty land cells.
+
+    Each empty land cell has a berry_growth probability of growing a berry
+    on the next timestep.
+
+    Args:
+        grid (np.ndarray): Current 2D grid of entity states.
+        grid_next (np.ndarray): Next 2D grid to be updated in place.
+        landscape (np.ndarray): 2D landscape grid (1=land, 0=water).
+        width (int): Width of the landscape excluding halo.
+        height (int): Height of the landscape excluding halo.
+        berry_growth (float): Probability of a berry growing in an empty cell.
+    """
+    for row in range(1, height + 1):
+        for col in range(1, width + 1):
+            if landscape[row, col] and not grid[row, col]:
+                if random.random() < berry_growth:
+                    grid_next[row, col] = BERRY
+
+
+def move_insects(grid, grid_next, landscape, width, height):
+    """
+    Move each insect one step toward the nearest berry using BFS.
+
+    Insects stay in place if no berry is found or if the destination cell
+    is already occupied by another insect or a lizard.
+
+    Args:
+        grid (np.ndarray): Current 2D grid of entity states.
+        grid_next (np.ndarray): Next 2D grid to be updated in place.
+        landscape (np.ndarray): 2D landscape grid (1=land, 0=water).
+        width (int): Width of the landscape excluding halo.
+        height (int): Height of the landscape excluding halo.
+    """
+    for row in range(1, height + 1):
+        for col in range(1, width + 1):
+            if grid[row, col] == INSECT:
+                row_step, col_step = find_nearest(landscape, grid, (row, col), BERRY)
+                next_row = row + row_step
+                next_col = col + col_step
+
+                if (row_step == 0 and col_step == 0) \
+                        or grid[next_row, next_col] in (INSECT, LIZARD) \
+                        or grid_next[next_row, next_col] in (INSECT, LIZARD):
+                    next_row, next_col = row, col
+
+                grid_next[row, col] = EMPTY
+                grid_next[next_row, next_col] = INSECT
+
+
+def move_lizards(grid, grid_next, landscape, width, height, lizard_view_radius):
+    """
+    Move each lizard one step toward the nearest insect within its view radius using BFS.
+
+    Lizards stay in place if no insect is found within lizard_view_radius cells,
+    or if the destination cell is already occupied by a berry or another lizard.
+
+    Args:
+        grid (np.ndarray): Current 2D grid of entity states.
+        grid_next (np.ndarray): Next 2D grid to be updated in place.
+        landscape (np.ndarray): 2D landscape grid (1=land, 0=water).
+        width (int): Width of the landscape excluding halo.
+        height (int): Height of the landscape excluding halo.
+        lizard_view_radius (int): Maximum BFS search radius for lizards hunting insects.
+    """
+    for row in range(1, height + 1):
+        for col in range(1, width + 1):
+            if grid[row, col] == LIZARD:
+                row_step, col_step = find_nearest(
+                    landscape, grid, (row, col), INSECT,
+                    max_dist=lizard_view_radius)
+                next_row = row + row_step
+                next_col = col + col_step
+
+                if (row_step == 0 and col_step == 0) \
+                        or grid[next_row, next_col] in (BERRY, LIZARD) \
+                        or grid_next[next_row, next_col] in (BERRY, LIZARD):
+                    next_row, next_col = row, col
+
+                grid_next[row, col] = EMPTY
+                grid_next[next_row, next_col] = LIZARD
 
 
 def find_nearest(landscape, grid_state, start_pos, target_val, max_dist=math.inf):
@@ -145,34 +433,8 @@ def sim(berry_prop, berry_growth, insect_prop, insect_move_ts, lizard_prop,
     """
     print("Insect simulation", getVersion())
 
-    # Load landscape from file into a 2D array with a halo border of water
-    with open(landscape_file, "r") as f:
-        width, height = [int(v) for v in f.readline().split(" ")]
-        print("Width: {} Height: {}".format(width, height))
-
-        width_with_halo = width + 2
-        height_with_halo = height + 2
-
-        landscape = np.zeros((height_with_halo, width_with_halo), int)
-        row = 1
-        for line in f:
-            values = line.split()
-            if values:
-                landscape[row] = [0] + [int(v) for v in values] + [0]
-                row += 1
-
-    # Initialise entity grid: randomly place berries, insects and lizards on land cells
-    grid = np.zeros((height_with_halo, width_with_halo), int)
-    random.seed(seed)
-    for row in range(1, height + 1):
-        for col in range(1, width + 1):
-            if landscape[row, col]:
-                if random.random() < berry_prop:
-                    grid[row, col] = BERRY
-                if random.random() < insect_prop:
-                    grid[row, col] = INSECT
-                if random.random() < lizard_prop:
-                    grid[row, col] = LIZARD
+    landscape, width, height = load_landscape(landscape_file)
+    grid = initialise_grid(landscape, width, height, berry_prop, insect_prop, lizard_prop, seed)
 
     # Reuse this array each timestep to avoid repeated memory allocation
     grid_next = grid.copy()
@@ -185,154 +447,35 @@ def sim(berry_prop, berry_growth, insect_prop, insect_move_ts, lizard_prop,
 
         # Output statistics and PPM image at regular intervals
         if timestep % output_ts == 0:
-            berry_positions = []
-            insect_positions = []
-            lizard_positions = []
-
-            for row in range(1, height + 1):
-                for col in range(1, width + 1):
-                    if landscape[row, col]:
-                        if grid[row, col] == BERRY:
-                            berry_positions.append((row, col))
-                        if grid[row, col] == INSECT:
-                            insect_positions.append((row, col))
-                        if grid[row, col] == LIZARD:
-                            lizard_positions.append((row, col))
+            berry_positions, insect_positions, lizard_positions = collect_positions(
+                grid, landscape, width, height)
 
             num_berries = len(berry_positions)
             num_insects = len(insect_positions)
             num_lizards = len(lizard_positions)
 
-            # Calculate average Manhattan distance from each insect to nearest berry
-            insect_distances = []
-            for insect_pos in insect_positions:
-                min_dist = math.inf
-                for berry_pos in berry_positions:
-                    dist = abs(insect_pos[0] - berry_pos[0]) + abs(insect_pos[1] - berry_pos[1])
-                    if dist < min_dist:
-                        min_dist = dist
-                insect_distances.append(min_dist)
-
-            # Calculate average Manhattan distance from each lizard to nearest insect
-            lizard_distances = []
-            for lizard_pos in lizard_positions:
-                min_dist = math.inf
-                for insect_pos in insect_positions:
-                    dist = abs(lizard_pos[0] - insect_pos[0]) + abs(lizard_pos[1] - insect_pos[1])
-                    if dist < min_dist:
-                        min_dist = dist
-                lizard_distances.append(min_dist)
-
-            avg_insect_dist = sum(insect_distances) / len(insect_distances) if insect_distances else math.inf
-            avg_lizard_dist = sum(lizard_distances) / len(lizard_distances) if lizard_distances else math.inf
+            avg_insect_dist = calculate_average_distance(insect_positions, berry_positions)
+            avg_lizard_dist = calculate_average_distance(lizard_positions, insect_positions)
 
             print("Averages. Timestep: {} Berries: {} Insects: {}({:.3f}) Lizards: {}({:.3f})".format(
                 timestep, num_berries, num_insects, avg_insect_dist, num_lizards, avg_lizard_dist))
 
-            with open("averages.csv", "a") as f:
-                f.write("{},{},{},{:.3f},{},{:.3f}\n".format(
-                    timestep, num_berries, num_insects, avg_insect_dist,
-                    num_lizards, avg_lizard_dist))
-
-            # Build PPM colour channels for berries (red), lizards (green), insects (blue)
-            berry_cols = np.zeros((height, width), int)
-            insect_cols = np.zeros((height, width), int)
-            lizard_cols = np.zeros((height, width), int)
-
-            for row in range(1, height + 1):
-                for col in range(1, width + 1):
-                    if landscape[row, col]:
-                        if grid[row, col] == BERRY:
-                            berry_cols[row - 1, col - 1] = 150
-                        elif grid[row, col] == INSECT:
-                            insect_cols[row - 1, col - 1] = 150
-                        elif grid[row, col] == LIZARD:
-                            lizard_cols[row - 1, col - 1] = 200
-                            # Illuminate cells within lizard's view radius as a green diamond
-                            dirs = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-                            q = []
-                            vis = set()
-                            vis.add((row, col))
-                            for dx, dy in dirs:
-                                cx = row + dx
-                                cy = col + dy
-                                if landscape[cx, cy]:
-                                    q += [(cx, cy, dx, dy, 1)]
-                            while q:
-                                cx, cy, odx, ody, d = q.pop(0)
-                                if (cx, cy) in vis:
-                                    continue
-                                if d > lizard_view_radius:
-                                    continue
-                                vis.add((cx, cy))
-                                lizard_cols[cx - 1, cy - 1] = max(lizard_cols[cx - 1, cy - 1], 100 / d)
-                                for dx, dy in dirs:
-                                    nx, ny = cx + dx, cy + dy
-                                    if landscape[nx, ny] and (nx, ny) not in vis:
-                                        q.append((nx, ny, odx, ody, d + 1))
-
-            # Write PPM image file for this timestep
-            with open("map_{:04d}.ppm".format(timestep), "w") as f:
-                f.write("P3\n{} {}\n{}\n".format(width, height, 255))
-                for row in range(0, height):
-                    for col in range(0, width):
-                        if landscape[row + 1, col + 1]:
-                            f.write("{} {} {}\n".format(
-                                berry_cols[row, col],
-                                lizard_cols[row, col],
-                                insect_cols[row, col]))
-                        else:
-                            f.write("{} {} {}\n".format(0, 200, 255))
+            write_averages(timestep, num_berries, num_insects, avg_insect_dist,
+                           num_lizards, avg_lizard_dist)
+            write_ppm(timestep, grid, landscape, width, height, lizard_view_radius)
 
         # Copy current grid to next grid for this timestep's updates
         for row in range(1, height + 1):
             for col in range(1, width + 1):
                 grid_next[row, col] = grid[row, col]
 
-        # Grow new berries randomly on empty land cells
-        for row in range(1, height + 1):
-            for col in range(1, width + 1):
-                if landscape[row, col] and not grid[row, col]:
-                    if random.random() < berry_growth:
-                        grid_next[row, col] = BERRY
+        grow_berries(grid, grid_next, landscape, width, height, berry_growth)
 
-        # Move insects toward nearest berry every insect_move_ts timesteps
         if timestep % insect_move_ts == 0:
-            for row in range(1, height + 1):
-                for col in range(1, width + 1):
-                    if grid[row, col] == INSECT:
-                        row_step, col_step = find_nearest(landscape, grid, (row, col), BERRY)
-                        next_row = row + row_step
-                        next_col = col + col_step
+            move_insects(grid, grid_next, landscape, width, height)
 
-                        # Stay put if no berry found or destination is occupied
-                        if (row_step == 0 and col_step == 0) \
-                                or grid[next_row, next_col] in (INSECT, LIZARD) \
-                                or grid_next[next_row, next_col] in (INSECT, LIZARD):
-                            next_row, next_col = row, col
-
-                        grid_next[row, col] = EMPTY
-                        grid_next[next_row, next_col] = INSECT
-
-        # Move lizards toward nearest insect every lizard_move_ts timesteps
         if timestep % lizard_move_ts == 0:
-            for row in range(1, height + 1):
-                for col in range(1, width + 1):
-                    if grid[row, col] == LIZARD:
-                        row_step, col_step = find_nearest(
-                            landscape, grid, (row, col), INSECT,
-                            max_dist=lizard_view_radius)
-                        next_row = row + row_step
-                        next_col = col + col_step
-
-                        # Stay put if no insect found within radius or destination is occupied
-                        if (row_step == 0 and col_step == 0) \
-                                or grid[next_row, next_col] in (BERRY, LIZARD) \
-                                or grid_next[next_row, next_col] in (BERRY, LIZARD):
-                            next_row, next_col = row, col
-
-                        grid_next[row, col] = EMPTY
-                        grid_next[next_row, next_col] = LIZARD
+            move_lizards(grid, grid_next, landscape, width, height, lizard_view_radius)
 
         # Swap grids for next iteration
         grid, grid_next = grid_next, grid
