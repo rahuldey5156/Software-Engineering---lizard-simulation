@@ -30,40 +30,51 @@ def simCommLineIntf():
 
 def find_nearest(lscape, grid_state, start_pos, target_val, max_dist=math.inf):
     """
-    Standardized BFS to find the nearest target_val on the landscape.
-    Returns (dx, dy) of the first step toward the target, or (0, 0) if none found.
+    Find the nearest cell containing target_val using BFS.
+
+    Args:
+        lscape (np.ndarray): 2D landscape grid (1=land, 0=water).
+        grid_state (np.ndarray): 2D grid of entity states.
+        start_pos (tuple): (row, col) of the searching animal.
+        target_val (int): Cell value to search for (1=berry, 2=insect).
+        max_dist (int): Maximum BFS search depth. Defaults to math.inf.
+
+    Returns:
+        tuple: (dx, dy) first step toward target, or (0, 0) if not found.
     """
     x, y = start_pos
-    dirs = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-    
-    # Initialize queue with valid adjacent land cells
-    # Format: (current_x, current_y, starting_dx, starting_dy, distance)
+
+    # Randomly shuffle directions to match original behaviour and spread animals out
+    idirs = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    dirs = []
+    while idirs:
+        idx = math.floor(random.random() * len(idirs))
+        dirs.append(idirs.pop(idx))
+
     queue = deque()
     for dx, dy in dirs:
         nx, ny = x + dx, y + dy
         if lscape[nx, ny]:
             queue.append((nx, ny, dx, dy, 1))
-            
+
     visited = {(x, y)}
 
     while queue:
         cx, cy, first_dx, first_dy, dist = queue.popleft()
-        
+
         if (cx, cy) in visited or dist > max_dist:
             continue
         visited.add((cx, cy))
 
-        # Check if we found the target (Berry=1, Insect=2, etc.)
         if grid_state[cx, cy] == target_val:
             return first_dx, first_dy
 
-        # Otherwise, explore neighbors
         for dx, dy in dirs:
             nx, ny = cx + dx, cy + dy
             if lscape[nx, ny] and (nx, ny) not in visited:
                 queue.append((nx, ny, first_dx, first_dy, dist + 1))
 
-    return 0, 0 # No target found within range
+    return 0, 0
 
 def sim(b,c,i,j,l,m,n,o,co,lfile,seed):
     print("Insect simulation",getVersion())
@@ -73,12 +84,12 @@ def sim(b,c,i,j,l,m,n,o,co,lfile,seed):
         wh=w+2 # Width including halo
         hh=h+2 # Height including halo
         lscape=np.zeros((hh,wh),int)
-        row=1
-        for row, line in enumerate(f):
-            values=line.split()
-            # Only process the row if it actually contains values
+        row = 1
+        for line in f:
+            values = line.split()
             if values:
-                lscape[row] = [0] + [int(v) for v in values if v.strip()] + [0]
+                lscape[row] = [0] + [int(v) for v in values] + [0]
+                row += 1
 
     its=np.zeros((hh,wh),int)
     random.seed(seed)
