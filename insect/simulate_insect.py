@@ -5,6 +5,7 @@ Version 1.0, last updated in Feb 2026.
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from collections import deque
 import math
+import sys
 import numpy as np
 import random
 
@@ -53,6 +54,28 @@ def simCommLineIntf():
     parser.add_argument("-s", "--seed", type=int, default=1,
                         help="Random seed for initialising locations and movement")
     args = parser.parse_args()
+
+    # Validate probability parameters are in range [0, 1]
+    for name, value in [("berry-prop", args.berry_prop),
+                         ("berry-growth", args.berry_growth),
+                         ("insect-prop", args.insect_prop),
+                         ("lizard-prop", args.lizard_prop)]:
+        if not 0.0 <= value <= 1.0:
+            print("Error: --{} must be between 0.0 and 1.0, got {}".format(name, value),
+                  file=sys.stderr)
+            sys.exit(1)
+
+    # Validate integer parameters are positive
+    for name, value in [("insect-move-ts", args.insect_move_ts),
+                         ("lizard-move-ts", args.lizard_move_ts),
+                         ("lizard-view-radius", args.lizard_view_radius),
+                         ("output-ts", args.output_ts),
+                         ("cutoff", args.cutoff)]:
+        if value <= 0:
+            print("Error: --{} must be a positive integer, got {}".format(name, value),
+                  file=sys.stderr)
+            sys.exit(1)
+
     sim(
         args.berry_prop,
         args.berry_growth,
@@ -82,21 +105,69 @@ def load_landscape(landscape_file):
         tuple: (landscape, width, height) where landscape is a 2D NumPy array
                of shape (height+2, width+2), and width and height are the
                dimensions of the landscape excluding the halo.
+
+    Raises:
+        SystemExit: If the file is not found, cannot be read, or is malformed.
     """
-    with open(landscape_file, "r") as f:
-        width, height = [int(v) for v in f.readline().split(" ")]
-        print("Width: {} Height: {}".format(width, height))
+    if not landscape_file:
+        print("Error: no landscape file specified.", file=sys.stderr)
+        sys.exit(1)
 
-        width_with_halo = width + 2
-        height_with_halo = height + 2
+    try:
+        with open(landscape_file, "r") as f:
+            header = f.readline().split()
+            if len(header) != 2:
+                print("Error: landscape file header must contain exactly two integers (width height).",
+                      file=sys.stderr)
+                sys.exit(1)
 
-        landscape = np.zeros((height_with_halo, width_with_halo), int)
-        row = 1
-        for line in f:
-            values = line.split()
-            if values:
-                landscape[row] = [0] + [int(v) for v in values] + [0]
-                row += 1
+            try:
+                width, height = int(header[0]), int(header[1])
+            except ValueError:
+                print("Error: landscape file header must contain integers, got: {}".format(header),
+                      file=sys.stderr)
+                sys.exit(1)
+
+            if width < 0 or height < 0:
+                print("Error: landscape dimensions must be non-negative, got width={} height={}.".format(
+                    width, height), file=sys.stderr)
+                sys.exit(1)
+
+            print("Width: {} Height: {}".format(width, height))
+
+            width_with_halo = width + 2
+            height_with_halo = height + 2
+
+            landscape = np.zeros((height_with_halo, width_with_halo), int)
+            row = 1
+            for line in f:
+                values = line.split()
+                if values:
+                    if len(values) != width:
+                        print("Error: expected {} values per row, got {} in row {}.".format(
+                            width, len(values), row), file=sys.stderr)
+                        sys.exit(1)
+                    try:
+                        parsed = [int(v) for v in values]
+                    except ValueError:
+                        print("Error: landscape file must contain only 0s and 1s.",
+                              file=sys.stderr)
+                        sys.exit(1)
+                    if any(v not in (0, 1) for v in parsed):
+                        print("Error: landscape values must be 0 (water) or 1 (land), got: {}".format(
+                            parsed), file=sys.stderr)
+                        sys.exit(1)
+                    landscape[row] = [0] + parsed + [0]
+                    row += 1
+
+    except FileNotFoundError:
+        print("Error: landscape file '{}' not found.".format(landscape_file),
+              file=sys.stderr)
+        sys.exit(1)
+    except OSError as e:
+        print("Error: could not read landscape file '{}': {}".format(landscape_file, e),
+              file=sys.stderr)
+        sys.exit(1)
 
     return landscape, width, height
 
