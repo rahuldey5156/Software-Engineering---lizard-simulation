@@ -5,6 +5,8 @@
 * Python 3.x
 * [numpy](https://numpy.org/)
 * [pytest](https://pytest.org/)
+* [matplotlib](https://matplotlib.org/) (for reproducing the performance experiment graph only)
+* [ImageMagick](https://imagemagick.org/) (optional, for generating animated GIFs)
 
 To get Python 3 on Cirrus, run:
 
@@ -12,30 +14,52 @@ To get Python 3 on Cirrus, run:
 $ module load anaconda/python3
 ```
 
-The Anaconda Python distribution includes numpy and many other useful Python packages.
+The Anaconda Python distribution includes numpy and matplotlib. pytest can be
+installed with:
+
+```console
+$ pip install pytest
+```
 
 ---
 
 ## Usage
 
-To run the simulation using the map, [10x20.dat](../landscapes/10x20.dat), with default values for the other parameters:
+To run the simulation using the map [10x20.dat](landscapes/10x20.dat) with
+default values for all other parameters:
 
 ```console
-$ python -m insect.simulate_insect -f ../landscapes/10x20.dat
+$ python -m insect.simulate_insect -f landscapes/10x20.dat
 ```
 
-For an explanation of the other command-line parameters and their values, run:
+For an explanation of all command-line parameters and their default values:
 
 ```console
 $ python -m insect.simulate_insect -h
 ```
 
+### Command-line parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `-f`, `--landscape-file` | (required) | Input landscape file |
+| `-b`, `--berry-prop` | 0.05 | Initial proportion of land cells with berries |
+| `-c`, `--berry-growth` | 0.001 | Proportion of empty cells that grow a berry per timestep |
+| `-i`, `--insect-prop` | 0.08 | Initial proportion of land cells with insects |
+| `-j`, `--insect-move-ts` | 5 | Timesteps between insect movements |
+| `-l`, `--lizard-prop` | 0.01 | Initial proportion of land cells with lizards |
+| `-m`, `--lizard-move-ts` | 2 | Timesteps between lizard movements |
+| `-n`, `--lizard-view-radius` | 3 | Maximum BFS search radius for lizards hunting insects |
+| `-o`, `--output-ts` | 10 | Interval in timesteps between outputs |
+| `-x`, `--cutoff` | 500 | Total number of timesteps to simulate |
+| `-s`, `--seed` | 1 | Random seed for reproducibility |
+
 ### Input files
 
-Map files are expected to be plain-text files of form:
+Map files are expected to be plain-text files of the form:
 
-* One line giving Nx, the number of columns, and Ny, the number of rows
-* Ny lines, each consisting of a sequence of Nx space-separated ones and zeros (land=1, water=0).
+* One header line giving the width (Nx) and height (Ny) separated by a space
+* Ny lines, each containing Nx space-separated values of 1 (land) or 0 (water)
 
 For example:
 
@@ -50,42 +74,39 @@ For example:
 1 0 0 0 0 0 0
 ```
 
+A selection of landscape files are provided in the [landscapes/](landscapes/)
+directory, ranging from simple 1x1 grids to complex 1000x800 island maps.
+
+### Invalid input handling
+
+The program will print an error message to stderr and exit with a non-zero
+exit code if:
+
+* The landscape file does not exist or cannot be read
+* The landscape file header is malformed or missing
+* Landscape cell values contain anything other than 0 or 1
+* Probability parameters (`-b`, `-c`, `-i`, `-l`) are outside [0.0, 1.0]
+* Integer parameters (`-j`, `-m`, `-n`, `-o`, `-x`) are not positive integers
+
 ### PPM output files
 
-"Plain PPM" image files are output every `OUTPUT_TS` timesteps.  These files are named `map_<NNNN>.ppm` and are a visualisation of the position of berries, insects, lizards and water-only squares.
+Plain PPM image files are output every `output-ts` timesteps, named
+`map_<NNNN>.ppm`. These visualise the positions of berries, insects, lizards
+and water at that point in time.
 
-These files do not include the halo as the use of a halo is an implementation detail.
+Colour encoding:
 
-These files are plain-text so you can view them as you would any plain-text file e.g.:
-
-```console
-$ cat map<NNNN>.ppm
-```
-PPM files can be viewed graphically using ImageMagick commands as follows.
-
-Cirrus users will need first need to run:
-
-```console
-$ module load ImageMagick
-```
-
-To view a PPM file, run:
-
-```console
-$ display -resize 400 map<NNNN>.ppm
-```
-
-To animate a series of PPM files:
-
-```console
-$ animate -resize 400 map*.ppm
-```
-
-For more information on the PPM file format, run `man ppm` or see [ppm](http://netpbm.sourceforge.net/doc/ppm.html).
+* **Water**: bright blue-green RGB(0, 200, 255)
+* **Berry**: red channel = 150
+* **Insect**: blue channel = 150
+* **Lizard**: green channel = 200, surrounded by a dimming green diamond
+  showing its view radius. Cells within the view radius appear progressively
+  dimmer the further they are from the lizard.
 
 ### CSV averages output file
 
-A plain-text comma-separated values file, `averages.csv`, has the average density of mice and foxes (across the land-only squares) calculated every `OUTPUT_TS` timesteps. The file has four columns and a header row:
+A plain-text CSV file `averages.csv` is written with statistics at every
+`output-ts` timesteps:
 
 ```csv
 Timestep,# Berries,# Insects,Avg distance to berry,# Lizards,Avg distance to insect
@@ -93,109 +114,138 @@ Timestep,# Berries,# Insects,Avg distance to berry,# Lizards,Avg distance to ins
 
 where:
 
-* `Timestep`: timestep from 0 .. `LENGTH`
-* `# Berries`: total number of berries
-* `# Insects`: total number of mice
-* `Avg distance to berry`: average distance from each insect to nearest berry
-* `# Lizards`: total number of cats
-* `Avg distance to insect`: average distance from each lizard to nearest insect
+* `Timestep`: current timestep
+* `# Berries`: total number of berries on the landscape
+* `# Insects`: total number of insects on the landscape
+* `Avg distance to berry`: average Manhattan distance from each insect to its nearest berry
+* `# Lizards`: total number of lizards on the landscape
+* `Avg distance to insect`: average Manhattan distance from each lizard to its nearest insect
 
-This file is plain-text so you can view it as you would any plain-text file e.g.:
+---
+
+## Visualising the simulation
+
+PPM files can be viewed individually using ImageMagick. Cirrus users should
+first run `module load ImageMagick`.
+
+To view a single PPM file:
 
 ```console
-$ cat averages.csv
+$ display -resize 400 map_0000.ppm
 ```
+
+To animate all PPM files:
+
+```console
+$ animate -resize 400 map*.ppm
+```
+
+To generate an animated GIF from the PPM files:
+
+```console
+$ python -m insect.simulate_insect -f landscapes/map.dat -s 1 -x 100 -o 5
+$ magick map_*.ppm -resize 400x400 -delay 20 results/simulation.gif
+```
+
+A sample animated GIF showing 100 timesteps on the `map.dat` landscape is
+provided in [results/simulation.gif](results/simulation.gif).
+
+For more information on the PPM file format, run `man ppm` or see
+[ppm](http://netpbm.sourceforge.net/doc/ppm.html).
 
 ---
 
 ## Running automated tests
 
-`test/test_example.py` is a module with a unit test for the `getVersion` function in `insect/simulate_insect.py`.
+All tests are in `test/test_regression.py` and cover:
 
-`pytest` can find and run any tests in the current directory or its subdirectories:
+* Unit tests for `find_nearest`, `load_landscape`, `initialise_grid`,
+  `collect_positions`, `calculate_average_distance`, `grow_berries`,
+  `move_insects`, `move_lizards`, `write_averages` and `write_ppm`
+* End-to-end regression tests verifying console output, CSV values and PPM
+  file creation on multiple landscape files
+* Edge case tests covering 0x0, 1x1, all-water, all-land, wide, tall,
+  island and corner landscapes
+* Reproducibility tests verifying same seed gives identical output
+* Invalid input handling tests
 
-```console
-$ pytest
-======================================= test session starts =======================================
-...
-test/test_example.py .                                                                      [100%]
-
-======================================== 1 passed in 0.20s ========================================
-```
-
-`pytest` can be told to find and run the tests in a specific module:
-
-```console
-$ pytest test/test_example.py
-======================================= test session starts =======================================
-...
-test/test_example.py .                                                                      [100%]
-
-======================================== 1 passed in 0.21s ========================================
-```
-
-`pytest` can be told to run a specific test within a specific module:
+Run all tests from the repository root:
 
 ```console
-$ pytest test/test_example.py::testGetVersion
-======================================= test session starts =======================================
-...
-test/test_example.py .                                                                      [100%]
-
-======================================== 1 passed in 0.35s ========================================
+$ pytest test/test_regression.py -v
 ```
 
-For more information on `pytest`, see the [pytest](https://docs.pytest.org/) documentation.
+Expected output:
+
+```
+57 passed in ~3s
+```
 
 ---
 
-## Running the simulation within Pycharm
+## Performance experiment
 
-If you know how to use the [Pycharm](https://www.jetbrains.com/pycharm/) integrated development environment, then here is *one way* you can configure this to run the program and tests as follows (for example, for Pycharm 2020.02).
+The performance experiment investigates how grid size affects simulation
+runtime. Full details, including profiling results and analysis, are in
+[PERFORMANCE.md](PERFORMANCE.md).
 
-Start Pycharm.
+To reproduce the full experiment:
 
-Open the source code directory:
+```console
+$ python3 scripts/generate_landscapes.py
+$ python3 scripts/run_experiment.py
+$ python3 scripts/plot_results.py
+```
 
-* Click Open
-* Select the directory with the code, the directory with ``, `test`, and `README.md`.
+To reproduce the profiling results:
+
+```console
+$ python3 scripts/profile_simulation.py
+```
+
+Results are saved to `results/runtime_vs_gridsize.png`.
+
+---
+
+## Repository structure
+
+```
+s2793337/
+  insect/
+    __init__.py
+    simulate_insect.py      # Main simulation code
+  test/
+    __init__.py
+    test_regression.py      # All automated tests (57 tests)
+  landscapes/
+    *.dat                   # Provided landscape files
+    experiment/             # Generated landscape files for performance experiment
+  scripts/
+    generate_landscapes.py  # Generates landscape files for the experiment
+    run_experiment.py       # Times the simulation across grid sizes
+    plot_results.py         # Plots the results graph
+    profile_simulation.py   # Profiles the simulation using cProfile
+  results/
+    runtime_vs_gridsize.png # Performance experiment graph
+    simulation.gif          # Animated GIF of the simulation
+  README.md                 # This file
+  PERFORMANCE.md            # Performance experiment report
+```
+
+## Running the simulation within PyCharm
+
+If you know how to use the [PyCharm](https://www.jetbrains.com/pycharm/)
+integrated development environment, here is one way to configure it:
 
 Create a configuration to run the program:
 
-* Select Run menu, Run...
-* Click Edit Configurations...
-* Click +
-* Click Python.
-* Click V on right of 'Script path' and select 'Module name'.
+* Select Run menu → Run... → Edit Configurations... → + → Python
+* Click the dropdown next to 'Script path' and select 'Module name'
 * Enter Module name: `insect.simulate_insect`
-* Enter Parameters: Enter `-f <path from your home directory to landscapes/10x20.dat>`. The current directory is assumed to be wherever you started Pycharm. If you started this in your home directory then your path to `landscapes/10x20.dat` might be `assessment/landscapes/10x20.dat`.
-* Click Run.
-* The 'Run' window should show the output from the run.
+* Enter Parameters: `-f landscapes/10x20.dat`
+* Click Run
 
-Rerun the program:
+Create a configuration to run the tests using pytest:
 
-* Select Run menu, Run...
-* Click `insect.simulate_insect`.
-* The 'Run' window should show the output from the run.
-
-Create a configuration to run the tests using `pytest`:
-
-* Select Run menu, Run...
-* Click Edit Configurations...
-* Click +
-* Click pytest.
-* Click Run.
-* The 'Run' window should show the output from the test run.
-
-Rerun the tests:
-
-* Select Run menu, Run...
-* Click `insect.simulate_insect`.
-* Click pytest.
-* The 'Run' window should show the output from the test run.
-
-To edit a run configuration:
-
-* Select Run menu, Edit Configurations...
-* Click the configuration you want to edit.
-* For running `insect.simulate_insect` with different command-line parameters, you can add these to, and edit them within, the Parameters field in the Configuration form. Alternatively, you can create run configurations with different names for different parameter sets.
+* Select Run menu → Run... → Edit Configurations... → + → pytest
+* Click Run
