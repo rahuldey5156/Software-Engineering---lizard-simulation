@@ -144,11 +144,13 @@ To generate an animated GIF from the PPM files:
 
 ```console
 $ python -m insect.simulate_insect -f landscapes/map.dat -s 1 -x 100 -o 5
-$ magick map_*.ppm -resize 400x400 -delay 20 results/simulation.gif
+$ magick $(ls map_*.ppm | sort) -resize 400x400 -delay 20 results/simulation.gif
 ```
 
 A sample animated GIF showing 100 timesteps on the `map.dat` landscape is
-provided in [results/simulation.gif](results/simulation.gif).
+shown below. The full file is available at [results/simulation.gif](results/simulation.gif).
+
+![Simulation Animation](results/simulation.gif)
 
 For more information on the PPM file format, run `man ppm` or see
 [ppm](http://netpbm.sourceforge.net/doc/ppm.html).
