@@ -1,7 +1,5 @@
 # MSc Programming Skills Python lizard-insect-berry simulation
 
-![tests](https://git.ecdf.ed.ac.uk/epcc110172025s2/s2793337/badges/main/pipeline.svg)
-
 ## Requirements
 
 * Python 3.x
