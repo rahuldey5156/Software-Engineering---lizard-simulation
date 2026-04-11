@@ -1,0 +1,13 @@
+[MESSAGES CONTROL]
+# Disable warnings that are inherent to the simulation's design:
+# - too-many-instance-attributes: SimulationConfig has 11 fields by design
+# - too-many-arguments: simulation functions require grid, landscape, dimensions
+#   and domain parameters; these are grouped where possible via SimulationConfig
+# - too-many-locals: simulation output and BFS functions are complex by nature
+disable=too-many-instance-attributes,
+        too-many-arguments,
+        too-many-positional-arguments,
+        too-many-locals
+
+[FORMAT]
+max-line-length=100
