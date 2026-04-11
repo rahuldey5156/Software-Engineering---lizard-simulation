@@ -4,6 +4,7 @@ Version 1.0, last updated in Feb 2026.
 '''
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from collections import deque
+from dataclasses import dataclass
 import math
 import sys
 import numpy as np
@@ -21,6 +22,37 @@ LAND = 1
 
 # Cardinal movement directions (row_delta, col_delta)
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
+
+@dataclass
+class SimulationConfig:
+    """
+    Configuration parameters for the lizard-insect-berry simulation.
+
+    Attributes:
+        berry_prop (float): Initial probability of a berry in each land cell.
+        berry_growth (float): Probability of a berry growing in an empty cell each timestep.
+        insect_prop (float): Initial probability of an insect in each land cell.
+        insect_move_ts (int): Number of timesteps between insect movements.
+        lizard_prop (float): Initial probability of a lizard in each land cell.
+        lizard_move_ts (int): Number of timesteps between lizard movements.
+        lizard_view_radius (int): Maximum BFS search radius for lizards hunting insects.
+        output_ts (int): Interval in timesteps between file and console outputs.
+        cutoff (int): Total number of timesteps to simulate.
+        landscape_file (str): Path to the input landscape file.
+        seed (int): Random seed for reproducibility.
+    """
+    berry_prop: float = 0.05
+    berry_growth: float = 0.001
+    insect_prop: float = 0.08
+    insect_move_ts: int = 5
+    lizard_prop: float = 0.01
+    lizard_move_ts: int = 2
+    lizard_view_radius: int = 3
+    output_ts: int = 10
+    cutoff: int = 500
+    landscape_file: str = ""
+    seed: int = 1
 
 
 def getVersion():
@@ -76,19 +108,20 @@ def simCommLineIntf():
                   file=sys.stderr)
             sys.exit(1)
 
-    sim(
-        args.berry_prop,
-        args.berry_growth,
-        args.insect_prop,
-        args.insect_move_ts,
-        args.lizard_prop,
-        args.lizard_move_ts,
-        args.lizard_view_radius,
-        args.output_ts,
-        args.cutoff,
-        args.landscape_file,
-        args.seed
+    config = SimulationConfig(
+        berry_prop=args.berry_prop,
+        berry_growth=args.berry_growth,
+        insect_prop=args.insect_prop,
+        insect_move_ts=args.insect_move_ts,
+        lizard_prop=args.lizard_prop,
+        lizard_move_ts=args.lizard_move_ts,
+        lizard_view_radius=args.lizard_view_radius,
+        output_ts=args.output_ts,
+        cutoff=args.cutoff,
+        landscape_file=args.landscape_file,
+        seed=args.seed
     )
+    sim(config)
 
 
 def load_landscape(landscape_file):
@@ -216,7 +249,8 @@ def collect_positions(grid, landscape, width, height):
         height (int): Height of the landscape excluding halo.
 
     Returns:
-        tuple: (berry_positions, insect_positions, lizard_positions) each a list of (row, col) tuples.
+        tuple: (berry_positions, insect_positions, lizard_positions) each a
+               list of (row, col) tuples.
     """
     berry_positions = []
     insect_positions = []
@@ -247,7 +281,8 @@ def calculate_average_distance(searcher_positions, target_positions):
         target_positions (list): List of (row, col) positions of target entities.
 
     Returns:
-        float: Average distance to nearest target, or math.inf if no searchers or targets exist.
+        float: Average distance to nearest target, or math.inf if no searchers
+               or targets exist.
     """
     if not searcher_positions or not target_positions:
         return math.inf
@@ -264,7 +299,8 @@ def calculate_average_distance(searcher_positions, target_positions):
     return sum(distances) / len(distances)
 
 
-def write_averages(timestep, num_berries, num_insects, avg_insect_dist, num_lizards, avg_lizard_dist):
+def write_averages(timestep, num_berries, num_insects, avg_insect_dist,
+                   num_lizards, avg_lizard_dist):
     """
     Append a row of statistics to the averages CSV file.
 
@@ -290,7 +326,8 @@ def write_ppm(timestep, grid, landscape, width, height, lizard_view_radius):
         - Water:  RGB(0, 200, 255) bright blue-green
         - Berry:  red channel = 150
         - Insect: blue channel = 150
-        - Lizard: green channel = 200, with a dimming green diamond showing its view radius
+        - Lizard: green channel = 200, with a dimming green diamond showing
+                  its view radius
 
     Args:
         timestep (int): Current simulation timestep, used to name the output file.
@@ -325,7 +362,8 @@ def write_ppm(timestep, grid, landscape, width, height, lizard_view_radius):
                     visited = {(row, col)}
 
                     while search_queue:
-                        curr_row, curr_col, orig_row_delta, orig_col_delta, dist = search_queue.pop(0)
+                        curr_row, curr_col, orig_row_delta, orig_col_delta, dist = \
+                            search_queue.pop(0)
 
                         if (curr_row, curr_col) in visited or dist > lizard_view_radius:
                             continue
@@ -340,9 +378,11 @@ def write_ppm(timestep, grid, landscape, width, height, lizard_view_radius):
                         for row_delta, col_delta in search_dirs:
                             next_row = curr_row + row_delta
                             next_col = curr_col + col_delta
-                            if landscape[next_row, next_col] and (next_row, next_col) not in visited:
+                            if landscape[next_row, next_col] and \
+                                    (next_row, next_col) not in visited:
                                 search_queue.append(
-                                    (next_row, next_col, orig_row_delta, orig_col_delta, dist + 1)
+                                    (next_row, next_col,
+                                     orig_row_delta, orig_col_delta, dist + 1)
                                 )
 
     with open("map_{:04d}.ppm".format(timestep), "w") as f:
@@ -412,7 +452,8 @@ def move_insects(grid, grid_next, landscape, width, height):
 
 def move_lizards(grid, grid_next, landscape, width, height, lizard_view_radius):
     """
-    Move each lizard one step toward the nearest insect within its view radius using BFS.
+    Move each lizard one step toward the nearest insect within its view radius
+    using BFS.
 
     Lizards stay in place if no insect is found within lizard_view_radius cells,
     or if the destination cell is already occupied by a berry or another lizard.
@@ -452,7 +493,8 @@ def find_nearest(landscape, grid_state, start_pos, target_val, max_dist=math.inf
 
     Args:
         landscape (np.ndarray): 2D grid where 1=land and 0=water (including halo).
-        grid_state (np.ndarray): 2D grid of entity states (EMPTY, BERRY, INSECT, LIZARD).
+        grid_state (np.ndarray): 2D grid of entity states
+                                 (EMPTY, BERRY, INSECT, LIZARD).
         start_pos (tuple): (row, col) position of the searching animal.
         target_val (int): Entity value to search for (e.g. BERRY=1, INSECT=2).
         max_dist (int): Maximum BFS search depth in steps. Defaults to math.inf.
@@ -495,45 +537,39 @@ def find_nearest(landscape, grid_state, start_pos, target_val, max_dist=math.inf
             next_row = curr_row + row_delta
             next_col = curr_col + col_delta
             if landscape[next_row, next_col] and (next_row, next_col) not in visited:
-                queue.append((next_row, next_col, first_row_step, first_col_step, dist + 1))
+                queue.append((next_row, next_col,
+                              first_row_step, first_col_step, dist + 1))
 
     return 0, 0
 
 
-def sim(berry_prop, berry_growth, insect_prop, insect_move_ts, lizard_prop,
-        lizard_move_ts, lizard_view_radius, output_ts, cutoff, landscape_file, seed):
+def sim(config):
     """
     Run the lizard-insect-berry simulation.
 
     Args:
-        berry_prop (float): Initial probability of a berry in each land cell.
-        berry_growth (float): Probability of a berry growing in an empty cell each timestep.
-        insect_prop (float): Initial probability of an insect in each land cell.
-        insect_move_ts (int): Number of timesteps between insect movements.
-        lizard_prop (float): Initial probability of a lizard in each land cell.
-        lizard_move_ts (int): Number of timesteps between lizard movements.
-        lizard_view_radius (int): Maximum BFS search radius for lizards hunting insects.
-        output_ts (int): Interval in timesteps between file and console outputs.
-        cutoff (int): Total number of timesteps to simulate.
-        landscape_file (str): Path to the input landscape file.
-        seed (int): Random seed for reproducibility.
+        config (SimulationConfig): Dataclass containing all simulation parameters.
     """
     print("Insect simulation", getVersion())
 
-    landscape, width, height = load_landscape(landscape_file)
-    grid = initialise_grid(landscape, width, height, berry_prop, insect_prop, lizard_prop, seed)
+    landscape, width, height = load_landscape(config.landscape_file)
+    grid = initialise_grid(
+        landscape, width, height,
+        config.berry_prop, config.insect_prop, config.lizard_prop, config.seed
+    )
 
     # Reuse this array each timestep to avoid repeated memory allocation
     grid_next = grid.copy()
 
     # Write CSV header
     with open("averages.csv", "w") as f:
-        f.write("Timestep,# Fruit,# Insects,Avg distance to berry,# Lizards, Avg distance to insect\n")
+        f.write("Timestep,# Fruit,# Insects,Avg distance to berry,"
+                "# Lizards, Avg distance to insect\n")
 
-    for timestep in range(0, cutoff):
+    for timestep in range(0, config.cutoff):
 
         # Output statistics and PPM image at regular intervals
-        if timestep % output_ts == 0:
+        if timestep % config.output_ts == 0:
             berry_positions, insect_positions, lizard_positions = collect_positions(
                 grid, landscape, width, height)
 
@@ -541,28 +577,32 @@ def sim(berry_prop, berry_growth, insect_prop, insect_move_ts, lizard_prop,
             num_insects = len(insect_positions)
             num_lizards = len(lizard_positions)
 
-            avg_insect_dist = calculate_average_distance(insect_positions, berry_positions)
-            avg_lizard_dist = calculate_average_distance(lizard_positions, insect_positions)
+            avg_insect_dist = calculate_average_distance(
+                insect_positions, berry_positions)
+            avg_lizard_dist = calculate_average_distance(
+                lizard_positions, insect_positions)
 
-            print("Averages. Timestep: {} Berries: {} Insects: {}({:.3f}) Lizards: {}({:.3f})".format(
-                timestep, num_berries, num_insects, avg_insect_dist, num_lizards, avg_lizard_dist))
+            print("Averages. Timestep: {} Berries: {} Insects: {}({:.3f}) "
+                  "Lizards: {}({:.3f})".format(
+                      timestep, num_berries, num_insects,
+                      avg_insect_dist, num_lizards, avg_lizard_dist))
 
-            write_averages(timestep, num_berries, num_insects, avg_insect_dist,
-                           num_lizards, avg_lizard_dist)
-            write_ppm(timestep, grid, landscape, width, height, lizard_view_radius)
+            write_averages(timestep, num_berries, num_insects,
+                           avg_insect_dist, num_lizards, avg_lizard_dist)
+            write_ppm(timestep, grid, landscape, width, height,
+                      config.lizard_view_radius)
 
-        # Copy current grid to next grid for this timestep's updates
-        for row in range(1, height + 1):
-            for col in range(1, width + 1):
-                grid_next[row, col] = grid[row, col]
+        # Copy current grid state into next grid using NumPy for efficiency
+        np.copyto(grid_next, grid)
 
-        grow_berries(grid, grid_next, landscape, width, height, berry_growth)
+        grow_berries(grid, grid_next, landscape, width, height, config.berry_growth)
 
-        if timestep % insect_move_ts == 0:
+        if timestep % config.insect_move_ts == 0:
             move_insects(grid, grid_next, landscape, width, height)
 
-        if timestep % lizard_move_ts == 0:
-            move_lizards(grid, grid_next, landscape, width, height, lizard_view_radius)
+        if timestep % config.lizard_move_ts == 0:
+            move_lizards(grid, grid_next, landscape, width, height,
+                         config.lizard_view_radius)
 
         # Swap grids for next iteration
         grid, grid_next = grid_next, grid
