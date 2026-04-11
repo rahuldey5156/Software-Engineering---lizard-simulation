@@ -5,8 +5,16 @@
 * Python 3.x
 * [numpy](https://numpy.org/)
 * [pytest](https://pytest.org/)
+* [pytest-cov](https://pytest-cov.readthedocs.io/) (for test coverage reports)
 * [matplotlib](https://matplotlib.org/) (for reproducing the performance experiment graph only)
+* [pylint](https://pylint.org/) (for static code analysis only)
 * [ImageMagick](https://imagemagick.org/) (optional, for generating animated GIFs)
+
+Install all dependencies with:
+
+```console
+$ pip install -r requirements.txt
+```
 
 To get Python 3 on Cirrus, run:
 
@@ -14,12 +22,7 @@ To get Python 3 on Cirrus, run:
 $ module load anaconda/python3
 ```
 
-The Anaconda Python distribution includes numpy and matplotlib. pytest can be
-installed with:
-
-```console
-$ pip install pytest
-```
+The Anaconda Python distribution includes numpy and matplotlib.
 
 ---
 
@@ -168,6 +171,7 @@ All tests are in `test/test_regression.py` and cover:
   file creation on multiple landscape files
 * Edge case tests covering 0x0, 1x1, all-water, all-land, wide, tall,
   island and corner landscapes
+* Boundary tests for all probability and integer parameters
 * Reproducibility tests verifying same seed gives identical output
 * Invalid input handling tests
 
@@ -180,8 +184,22 @@ $ pytest test/test_regression.py -v
 Expected output:
 
 ```
-57 passed in ~3s
+73 passed in ~5s
 ```
+
+To run tests with coverage report:
+
+```console
+$ pytest test/test_regression.py --cov=insect --cov-report=term-missing
+```
+
+To run static analysis:
+
+```console
+$ pylint insect/simulate_insect.py
+```
+
+Expected pylint score: 10.00/10.
 
 ---
 
@@ -218,7 +236,7 @@ s2793337/
     simulate_insect.py      # Main simulation code
   test/
     __init__.py
-    test_regression.py      # All automated tests (57 tests)
+    test_regression.py      # All automated tests (73 tests)
   landscapes/
     *.dat                   # Provided landscape files
     experiment/             # Generated landscape files for performance experiment
@@ -230,9 +248,13 @@ s2793337/
   results/
     runtime_vs_gridsize.png # Performance experiment graph
     simulation.gif          # Animated GIF of the simulation
+  .pylintrc                 # Pylint configuration
+  requirements.txt          # Python dependencies
   README.md                 # This file
   PERFORMANCE.md            # Performance experiment report
 ```
+
+---
 
 ## Running the simulation within PyCharm
 
