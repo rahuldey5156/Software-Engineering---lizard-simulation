@@ -736,3 +736,190 @@ def test_simulation_different_seeds_differ():
         run2 = f.read()
 
     assert run1 != run2
+
+# ── Boundary and branch coverage tests ───────────────────────────────────────
+
+def test_berry_prop_zero():
+    """Simulation with zero berry proportion should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-b", "0.0", "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_berry_prop_one():
+    """Simulation with berry proportion of 1.0 should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-b", "1.0", "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_insect_prop_zero():
+    """Simulation with zero insect proportion should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-i", "0.0", "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_lizard_prop_zero():
+    """Simulation with zero lizard proportion should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-l", "0.0", "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_output_ts_one():
+    """Simulation with output every timestep should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/3x3.dat",
+        "-s", "1", "-x", "5", "-o", "1"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_lizard_view_radius_one():
+    """Simulation with minimum lizard view radius should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-n", "1", "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_invalid_cutoff():
+    """Zero cutoff should exit with error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-x", "0"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_invalid_output_ts():
+    """Zero output timestep should exit with error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-o", "0"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_invalid_insect_move_ts():
+    """Zero insect move timestep should exit with error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-j", "0"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_invalid_lizard_move_ts():
+    """Zero lizard move timestep should exit with error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-m", "0"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_invalid_insect_prop():
+    """Out-of-range insect proportion should exit with error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-i", "2.0"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_invalid_lizard_prop():
+    """Out-of-range lizard proportion should exit with error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-l", "-0.5"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_load_landscape_bad_values(tmp_path):
+    """Landscape file with invalid cell values should exit with error."""
+    f = tmp_path / "bad.dat"
+    f.write_text("3 2\n1 1 1\n0 2 0\n")
+    with pytest.raises(SystemExit) as exc:
+        simulate_insect.load_landscape(str(f))
+    assert exc.value.code != 0
+
+
+def test_load_landscape_wrong_row_length(tmp_path):
+    """Landscape file with wrong number of values per row should exit with error."""
+    f = tmp_path / "bad.dat"
+    f.write_text("3 2\n1 1\n0 1 0\n")
+    with pytest.raises(SystemExit) as exc:
+        simulate_insect.load_landscape(str(f))
+    assert exc.value.code != 0
+
+
+def test_load_landscape_bad_header(tmp_path):
+    """Landscape file with malformed header should exit with error."""
+    f = tmp_path / "bad.dat"
+    f.write_text("abc def\n1 1 1\n")
+    with pytest.raises(SystemExit) as exc:
+        simulate_insect.load_landscape(str(f))
+    assert exc.value.code != 0
+
+
+def test_ppm_lizard_diamond(tmp_path):
+    """PPM output should render lizard diamond correctly."""
+    import os
+    lscape = make_landscape(5, 5)
+    grid = np.zeros((7, 7), int)
+    grid[3, 3] = simulate_insect.LIZARD
+    original_dir = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        simulate_insect.write_ppm(0, grid, lscape, 5, 5, lizard_view_radius=2)
+        with open("map_0000.ppm") as f:
+            lines = f.readlines()
+        # Lizard cell should have green channel = 200
+        # PPM data starts at line 3, row 2 (0-indexed), col 2 = line 3 + 2*5 + 2 = line 15
+        lizard_line = lines[3 + 2 * 5 + 2].strip()
+        r, g, b = map(int, lizard_line.split())
+        assert g == 200
+    finally:
+        os.chdir(original_dir)
