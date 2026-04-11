@@ -313,21 +313,37 @@ def write_ppm(timestep, grid, landscape, width, height, lizard_view_radius):
                     insect_cols[row - 1, col - 1] = 150
                 elif grid[row, col] == LIZARD:
                     lizard_cols[row - 1, col - 1] = 200
-                    # BFS outward to illuminate the lizard's view radius as a green diamond
-                    dirs = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-                    q = [(row + dr, col + dc, dr, dc, 1)
-                         for dr, dc in dirs if landscape[row + dr, col + dc]]
+
+                    # BFS outward from lizard to illuminate its view radius
+                    # as a dimming green diamond shape
+                    search_dirs = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+                    search_queue = [
+                        (row + row_delta, col + col_delta, row_delta, col_delta, 1)
+                        for row_delta, col_delta in search_dirs
+                        if landscape[row + row_delta, col + col_delta]
+                    ]
                     visited = {(row, col)}
-                    while q:
-                        cx, cy, odx, ody, d = q.pop(0)
-                        if (cx, cy) in visited or d > lizard_view_radius:
+
+                    while search_queue:
+                        curr_row, curr_col, orig_row_delta, orig_col_delta, dist = search_queue.pop(0)
+
+                        if (curr_row, curr_col) in visited or dist > lizard_view_radius:
                             continue
-                        visited.add((cx, cy))
-                        lizard_cols[cx - 1, cy - 1] = max(lizard_cols[cx - 1, cy - 1], 100 / d)
-                        for dx, dy in dirs:
-                            nx, ny = cx + dx, cy + dy
-                            if landscape[nx, ny] and (nx, ny) not in visited:
-                                q.append((nx, ny, odx, ody, d + 1))
+                        visited.add((curr_row, curr_col))
+
+                        # Dimmer green the further from the lizard
+                        lizard_cols[curr_row - 1, curr_col - 1] = max(
+                            lizard_cols[curr_row - 1, curr_col - 1],
+                            100 / dist
+                        )
+
+                        for row_delta, col_delta in search_dirs:
+                            next_row = curr_row + row_delta
+                            next_col = curr_col + col_delta
+                            if landscape[next_row, next_col] and (next_row, next_col) not in visited:
+                                search_queue.append(
+                                    (next_row, next_col, orig_row_delta, orig_col_delta, dist + 1)
+                                )
 
     with open("map_{:04d}.ppm".format(timestep), "w") as f:
         f.write("P3\n{} {}\n{}\n".format(width, height, 255))
