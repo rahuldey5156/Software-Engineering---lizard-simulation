@@ -546,3 +546,193 @@ def test_invalid_berry_prop():
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode != 0
     assert "Error" in result.stderr
+
+# ── Extended landscape tests ──────────────────────────────────────────────────
+
+def test_zero_dimension_landscape():
+    """Simulation on 0x0 landscape should run without error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/0x0.dat",
+        "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_single_land_cell_landscape():
+    """Simulation on 1x1 all-land landscape should run without error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/1x1land.dat",
+        "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_single_water_cell_landscape():
+    """Simulation on 1x1 all-water landscape should run without error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/1x1water.dat",
+        "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_wide_landscape():
+    """Simulation on a wide 50x1 landscape should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/50x1.dat",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Width: 50 Height: 1" in result.stdout
+
+
+def test_tall_landscape():
+    """Simulation on a tall 1x50 landscape should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/1x50.dat",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Width: 1 Height: 50" in result.stdout
+
+
+def test_two_islands_landscape():
+    """Simulation on two_square_islands landscape should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/two_square_islands.dat",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert result.returncode == 0
+
+
+def test_corner_landscape():
+    """Simulation on 20x20corner landscape (land only in corner) should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20corner.dat",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_asymmetric_landscape():
+    """Simulation on non-square 40x20 landscape should produce correct dimensions."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/40x20ps.dat",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Width: 40 Height: 20" in result.stdout
+
+
+def test_non_default_parameters():
+    """Simulation with non-default parameters should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-s", "42",
+        "-x", "30",
+        "-b", "0.1",
+        "-i", "0.2",
+        "-l", "0.05",
+        "-n", "5",
+        "-j", "3",
+        "-m", "1",
+        "-o", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Insect simulation 1.0" in result.stdout
+
+
+def test_ppm_content_land_cell(tmp_path):
+    """PPM file should contain correct pixel values for land cells with entities."""
+    import os
+    lscape = make_landscape(1, 1)
+    grid = np.zeros((3, 3), int)
+    grid[1, 1] = simulate_insect.BERRY
+    original_dir = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        simulate_insect.write_ppm(0, grid, lscape, 1, 1, lizard_view_radius=3)
+        with open("map_0000.ppm") as f:
+            lines = f.readlines()
+        # Berry cell: red=150, green=0, blue=0
+        assert lines[3].strip() == "150 0 0"
+    finally:
+        os.chdir(original_dir)
+
+
+def test_ppm_content_insect_cell(tmp_path):
+    """PPM file should contain correct pixel values for insect cells."""
+    import os
+    lscape = make_landscape(1, 1)
+    grid = np.zeros((3, 3), int)
+    grid[1, 1] = simulate_insect.INSECT
+    original_dir = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        simulate_insect.write_ppm(0, grid, lscape, 1, 1, lizard_view_radius=3)
+        with open("map_0000.ppm") as f:
+            lines = f.readlines()
+        # Insect cell: red=0, green=0, blue=150
+        assert lines[3].strip() == "0 0 150"
+    finally:
+        os.chdir(original_dir)
+
+
+def test_simulation_reproducible_with_same_seed():
+    """Two runs with the same seed should produce identical averages.csv."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-s", "7", "-x", "30"
+    ]
+    subprocess.run(cmd, check=True, capture_output=True)
+    with open("averages.csv") as f:
+        run1 = f.read()
+
+    subprocess.run(cmd, check=True, capture_output=True)
+    with open("averages.csv") as f:
+        run2 = f.read()
+
+    assert run1 == run2
+
+
+def test_simulation_different_seeds_differ():
+    """Two runs with different seeds should produce different averages.csv."""
+    cmd1 = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-s", "1", "-x", "30"
+    ]
+    cmd2 = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-s", "99", "-x", "30"
+    ]
+    subprocess.run(cmd1, check=True, capture_output=True)
+    with open("averages.csv") as f:
+        run1 = f.read()
+
+    subprocess.run(cmd2, check=True, capture_output=True)
+    with open("averages.csv") as f:
+        run2 = f.read()
+
+    assert run1 != run2
