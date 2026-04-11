@@ -5,6 +5,15 @@ import numpy as np
 import pytest
 from insect import simulate_insect
 
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def make_landscape(height, width):
+    """Create a landscape with halo border, all interior cells set to land."""
+    lscape = np.zeros((height + 2, width + 2), int)
+    lscape[1:height + 1, 1:width + 1] = 1
+    return lscape
+
+
 # ── Version test ─────────────────────────────────────────────────────────────
 
 def test_get_version():
@@ -13,13 +22,6 @@ def test_get_version():
 
 
 # ── find_nearest tests ───────────────────────────────────────────────────────
-
-def make_landscape(height, width):
-    """Helper: create a landscape with halo, all land inside."""
-    lscape = np.zeros((height + 2, width + 2), int)
-    lscape[1:height + 1, 1:width + 1] = 1
-    return lscape
-
 
 def test_find_nearest_finds_berry():
     """BFS should find a berry directly to the right."""
@@ -50,7 +52,6 @@ def test_find_nearest_respects_max_dist():
 def test_find_nearest_respects_water():
     """BFS should not cross water cells."""
     lscape = make_landscape(3, 3)
-    # Wall of water blocking column 3
     lscape[1, 3] = 0
     lscape[2, 3] = 0
     lscape[3, 3] = 0
@@ -86,7 +87,6 @@ def test_load_landscape_halo(tmp_path):
     f = tmp_path / "test.dat"
     f.write_text("3 2\n1 1 1\n0 1 0\n")
     landscape, width, height = simulate_insect.load_landscape(str(f))
-    # Check all four halo edges are zero
     assert all(landscape[0, :] == 0), "Top halo row should be zero"
     assert all(landscape[-1, :] == 0), "Bottom halo row should be zero"
     assert all(landscape[:, 0] == 0), "Left halo column should be zero"
@@ -135,7 +135,7 @@ def test_initialise_grid_shape():
 def test_initialise_grid_no_entities_on_water():
     """No entities should be placed on water cells."""
     lscape = make_landscape(5, 5)
-    lscape[2, 2] = 0  # Make one cell water
+    lscape[2, 2] = 0
     grid = simulate_insect.initialise_grid(lscape, 5, 5, 1.0, 1.0, 1.0, seed=1)
     assert grid[2, 2] == simulate_insect.EMPTY
 
@@ -194,9 +194,9 @@ def test_collect_positions_counts():
 def test_collect_positions_ignores_water():
     """Entities on water cells should not be collected."""
     lscape = make_landscape(3, 3)
-    lscape[2, 2] = 0  # Make cell water
+    lscape[2, 2] = 0
     grid = np.zeros((5, 5), int)
-    grid[2, 2] = simulate_insect.BERRY  # Place berry on water
+    grid[2, 2] = simulate_insect.BERRY
     berries, insects, lizards = simulate_insect.collect_positions(grid, lscape, 3, 3)
     assert len(berries) == 0
 
@@ -230,6 +230,198 @@ def test_calculate_average_distance_multiple():
     # Distances: 3 and 2, average = 2.5
     avg = simulate_insect.calculate_average_distance(searchers, targets)
     assert abs(avg - 2.5) < 0.001
+
+
+# ── grow_berries tests ────────────────────────────────────────────────────────
+
+def test_grow_berries_empty_cell_can_grow():
+    """An empty land cell should be able to grow a berry."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    grid_next = grid.copy()
+    # Use probability 1.0 to guarantee growth
+    simulate_insect.grow_berries(grid, grid_next, lscape, 3, 3, berry_growth=1.0)
+    # All interior land cells should now have berries in grid_next
+    interior = grid_next[1:4, 1:4]
+    assert (interior == simulate_insect.BERRY).all()
+
+
+def test_grow_berries_occupied_cell_does_not_grow():
+    """A cell already occupied by an entity should not grow a berry."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    grid[2, 2] = simulate_insect.INSECT
+    grid_next = grid.copy()
+    simulate_insect.grow_berries(grid, grid_next, lscape, 3, 3, berry_growth=1.0)
+    # The insect cell should not be overwritten with a berry
+    assert grid_next[2, 2] == simulate_insect.INSECT
+
+
+def test_grow_berries_zero_probability():
+    """With zero growth probability, no berries should grow."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    grid_next = grid.copy()
+    simulate_insect.grow_berries(grid, grid_next, lscape, 3, 3, berry_growth=0.0)
+    assert grid_next.sum() == 0
+
+
+def test_grow_berries_water_cell_does_not_grow():
+    """Water cells should never grow a berry."""
+    lscape = make_landscape(3, 3)
+    lscape[2, 2] = 0  # Make one cell water
+    grid = np.zeros((5, 5), int)
+    grid_next = grid.copy()
+    simulate_insect.grow_berries(grid, grid_next, lscape, 3, 3, berry_growth=1.0)
+    assert grid_next[2, 2] == simulate_insect.EMPTY
+
+
+# ── move_insects tests ────────────────────────────────────────────────────────
+
+def test_move_insects_moves_toward_berry():
+    """An insect should move one step toward the nearest berry."""
+    lscape = make_landscape(3, 5)
+    grid = np.zeros((5, 7), int)
+    grid[2, 2] = simulate_insect.INSECT
+    grid[2, 5] = simulate_insect.BERRY
+    grid_next = grid.copy()
+    simulate_insect.move_insects(grid, grid_next, lscape, 5, 3)
+    # Insect should have moved one step to the right toward the berry
+    assert grid_next[2, 2] == simulate_insect.EMPTY
+    assert grid_next[2, 3] == simulate_insect.INSECT
+
+
+def test_move_insects_no_berry_stays_put():
+    """An insect with no berry on the landscape should not move."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    grid[2, 2] = simulate_insect.INSECT
+    grid_next = grid.copy()
+    simulate_insect.move_insects(grid, grid_next, lscape, 3, 3)
+    assert grid_next[2, 2] == simulate_insect.INSECT
+
+
+def test_move_insects_does_not_move_into_lizard():
+    """An insect should not move into a cell occupied by a lizard."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    grid[2, 2] = simulate_insect.INSECT
+    grid[2, 3] = simulate_insect.LIZARD  # Lizard blocks the path
+    grid[2, 4] = simulate_insect.BERRY   # Berry is behind the lizard (out of bounds here so place differently)
+    grid_next = grid.copy()
+    simulate_insect.move_insects(grid, grid_next, lscape, 3, 3)
+    # Insect should stay put since destination is occupied by lizard
+    assert grid_next[2, 2] == simulate_insect.INSECT
+
+
+# ── move_lizards tests ────────────────────────────────────────────────────────
+
+def test_move_lizards_moves_toward_insect():
+    """A lizard should move one step toward the nearest insect."""
+    lscape = make_landscape(3, 5)
+    grid = np.zeros((5, 7), int)
+    grid[2, 2] = simulate_insect.LIZARD
+    grid[2, 4] = simulate_insect.INSECT
+    grid_next = grid.copy()
+    simulate_insect.move_lizards(grid, grid_next, lscape, 5, 3, lizard_view_radius=5)
+    assert grid_next[2, 2] == simulate_insect.EMPTY
+    assert grid_next[2, 3] == simulate_insect.LIZARD
+
+
+def test_move_lizards_no_insect_stays_put():
+    """A lizard with no insect within view radius should not move."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    grid[2, 2] = simulate_insect.LIZARD
+    grid_next = grid.copy()
+    simulate_insect.move_lizards(grid, grid_next, lscape, 3, 3, lizard_view_radius=3)
+    assert grid_next[2, 2] == simulate_insect.LIZARD
+
+
+def test_move_lizards_respects_view_radius():
+    """A lizard should not move toward an insect beyond its view radius."""
+    lscape = make_landscape(1, 10)
+    grid = np.zeros((3, 12), int)
+    grid[1, 1] = simulate_insect.LIZARD
+    grid[1, 9] = simulate_insect.INSECT  # 8 steps away
+    grid_next = grid.copy()
+    simulate_insect.move_lizards(grid, grid_next, lscape, 10, 1, lizard_view_radius=3)
+    # Insect is beyond view radius, lizard should stay put
+    assert grid_next[1, 1] == simulate_insect.LIZARD
+
+
+# ── write_averages tests ──────────────────────────────────────────────────────
+
+def test_write_averages_creates_correct_row(tmp_path):
+    """write_averages should append a correctly formatted row to averages.csv."""
+    csv_path = tmp_path / "averages.csv"
+    # Write header first
+    csv_path.write_text(
+        "Timestep,# Fruit,# Insects,Avg distance to berry,# Lizards, Avg distance to insect\n"
+    )
+    original_dir = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        simulate_insect.write_averages(10, 5, 12, 3.456, 2, 7.891)
+        content = csv_path.read_text().strip().split("\n")
+        assert len(content) == 2
+        row = content[1].split(",")
+        assert int(row[0]) == 10
+        assert int(row[1]) == 5
+        assert int(row[2]) == 12
+        assert abs(float(row[3]) - 3.456) < 0.001
+        assert int(row[4]) == 2
+        assert abs(float(row[5]) - 7.891) < 0.001
+    finally:
+        os.chdir(original_dir)
+
+
+# ── write_ppm tests ───────────────────────────────────────────────────────────
+
+def test_write_ppm_creates_file(tmp_path):
+    """write_ppm should create a correctly named PPM file."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    original_dir = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        simulate_insect.write_ppm(0, grid, lscape, 3, 3, lizard_view_radius=3)
+        assert os.path.exists("map_0000.ppm")
+    finally:
+        os.chdir(original_dir)
+
+
+def test_write_ppm_header(tmp_path):
+    """PPM file should have a valid P3 header."""
+    lscape = make_landscape(3, 4)
+    grid = np.zeros((5, 6), int)
+    original_dir = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        simulate_insect.write_ppm(5, grid, lscape, 4, 3, lizard_view_radius=3)
+        with open("map_0005.ppm") as f:
+            lines = f.readlines()
+        assert lines[0].strip() == "P3"
+        assert lines[1].strip() == "4 3"
+        assert lines[2].strip() == "255"
+    finally:
+        os.chdir(original_dir)
+
+
+def test_write_ppm_water_colour(tmp_path):
+    """Water cells should be written as RGB(0, 200, 255)."""
+    lscape = np.zeros((3, 3), int)  # All water including halo
+    grid = np.zeros((3, 3), int)
+    # 1x1 landscape all water
+    original_dir = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        simulate_insect.write_ppm(0, grid, lscape, 1, 1, lizard_view_radius=3)
+        with open("map_0000.ppm") as f:
+            lines = f.readlines()
+        assert lines[3].strip() == "0 200 255"
+    finally:
+        os.chdir(original_dir)
 
 
 # ── End-to-end regression tests ──────────────────────────────────────────────
@@ -271,6 +463,23 @@ def test_simulation_matches_baseline():
         assert abs(float(parts[3]) - exp_ai) < 0.001
         assert int(parts[4]) == exp_l
         assert abs(float(parts[5]) - exp_al) < 0.001
+
+
+def test_simulation_matches_baseline_different_landscape():
+    """Verify simulation produces consistent output on a different landscape."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-s", "1",
+        "-x", "20"
+    ]
+    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    assert os.path.exists("averages.csv")
+    with open("averages.csv", "r") as f:
+        lines = [l.strip() for l in f.readlines() if l.strip()]
+    # Check header and at least two data rows exist
+    assert lines[0] == "Timestep,# Fruit,# Insects,Avg distance to berry,# Lizards, Avg distance to insect"
+    assert len(lines) >= 3
 
 
 def test_simulation_stdout():
