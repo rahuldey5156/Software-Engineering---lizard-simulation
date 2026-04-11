@@ -1,0 +1,28 @@
+# GitLab CI pipeline for the lizard-insect-berry simulation
+# Automatically runs all tests on every push to any branch
+
+stages:
+  - test
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip
+
+run-tests:
+  stage: test
+  image: python:3.11
+  before_script:
+    - pip install numpy pytest
+  script:
+    - cd $CI_PROJECT_DIR
+    - pytest test/test_regression.py -v
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+    paths:
+      - report.xml
+    expire_in: 1 year
