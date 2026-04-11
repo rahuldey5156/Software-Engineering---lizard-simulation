@@ -14,8 +14,10 @@ to grow with grid size. Specifically:
   entity states, giving an O(N) cost per timestep where N is the number of
   cells.
 - The breadth-first search (BFS) used for insect and lizard movement explores
-  cells outward from each animal. In the worst case, BFS explores the entire
-  grid, giving O(N) cost per animal per timestep.
+  cells outward from each animal. BFS is an algorithm that visits cells in
+  order of distance from the starting point, guaranteeing the shortest path
+  is found first. In the worst case, BFS explores the entire grid, giving
+  O(N) cost per animal per timestep.
 - The statistics and PPM output at each output interval also iterate over all
   cells.
 
@@ -36,11 +38,18 @@ or O(N^2) where N is the number of cells.
 ### Experimental Design
 
 Square all-land landscape files were generated for grid sizes from 10×10 to
-100×100 in steps of 10, giving grids of 100 to 10,000 cells. All-land
-landscapes were chosen deliberately to eliminate the confounding effect of
-water on BFS search paths and to ensure that the number of land cells equals
-exactly the grid area. This gives a single clean, controlled independent
-variable: grid size.
+100×100 in steps of 10, giving grids of 100 to 10,000 cells. Sizes were
+chosen to cover two orders of magnitude (100 to 10,000 cells) while keeping
+individual run times short enough to allow 5 repeated runs per configuration.
+The upper limit of 100×100 was chosen because it represents a realistically
+sized landscape while keeping total experiment time under 5 minutes.
+
+All-land landscapes were used deliberately to eliminate the confounding effect
+of water on BFS search paths and to ensure that the number of land cells equals
+exactly the grid area. Custom landscape files were generated rather than using
+the provided landscapes, because the provided files vary in both size and
+water content simultaneously, making it impossible to isolate the effect of
+grid size alone. This gives a single clean, controlled independent variable.
 
 All other simulation parameters were held fixed across all runs:
 
@@ -58,8 +67,8 @@ All other simulation parameters were held fixed across all runs:
 Each configuration was run **5 times** with different random seeds (1 to 5)
 to assess the reliability and variability of the measurements. Using different
 seeds ensures that the results are not specific to one particular arrangement
-of animals, and that the mean runtime is representative of typical behaviour.
-The mean, minimum and maximum runtime across the 5 runs are reported.
+of animals, and that the mean runtime is representative of typical behaviour
+across different starting conditions.
 
 Runtime was measured using Python's `time.perf_counter()`, which provides
 high-resolution wall-clock timing. The timer started immediately before the
@@ -75,94 +84,133 @@ $ python3 scripts/run_experiment.py
 $ python3 scripts/plot_results.py
 ```
 
+### Profiling
+
+To understand which functions dominate runtime, the simulation was profiled
+using Python's built-in `cProfile` module on a 100×100 landscape for 100
+timesteps. This can be reproduced using:
+
+```console
+$ python3 scripts/profile_simulation.py
+```
+
 ## Results
 
-| Size | Cells | Run 1 | Run 2 | Run 3 | Run 4 | Run 5 | Mean | Min | Max |
-|------|-------|-------|-------|-------|-------|-------|------|-----|-----|
-| 10×10 | 100 | 0.221 | 0.136 | 0.118 | 0.144 | 0.154 | 0.154 | 0.118 | 0.221 |
-| 20×20 | 400 | 0.153 | 0.148 | 0.139 | 0.152 | 0.148 | 0.148 | 0.139 | 0.153 |
-| 30×30 | 900 | 0.195 | 0.246 | 0.209 | 0.224 | 0.197 | 0.214 | 0.195 | 0.246 |
-| 40×40 | 1600 | 0.289 | 0.300 | 0.251 | 0.280 | 0.311 | 0.286 | 0.251 | 0.311 |
-| 50×50 | 2500 | 0.352 | 0.346 | 0.334 | 0.386 | 0.371 | 0.358 | 0.334 | 0.386 |
-| 60×60 | 3600 | 0.416 | 0.448 | 0.418 | 0.421 | 0.445 | 0.430 | 0.416 | 0.448 |
-| 70×70 | 4900 | 0.501 | 0.544 | 0.496 | 0.505 | 0.554 | 0.520 | 0.496 | 0.554 |
-| 80×80 | 6400 | 0.609 | 0.638 | 0.639 | 0.567 | 0.596 | 0.610 | 0.567 | 0.639 |
-| 90×90 | 8100 | 0.781 | 0.757 | 0.735 | 0.775 | 0.733 | 0.756 | 0.733 | 0.781 |
-| 100×100 | 10000 | 0.876 | 0.908 | 0.909 | 0.877 | 0.870 | 0.888 | 0.870 | 0.909 |
+### Timing Results
 
-All times are in seconds. The variability across runs (Max - Min) is small
-relative to the mean for all grid sizes, confirming that 5 runs is sufficient
-to obtain reliable measurements. The largest absolute variability is seen at
-10×10 (0.103s range), which is expected at this scale as discussed below.
+| Size | Cells | Run 1 | Run 2 | Run 3 | Run 4 | Run 5 | Mean | Min | Max | CV (%) |
+|------|-------|-------|-------|-------|-------|-------|------|-----|-----|--------|
+| 10×10 | 100 | 0.221 | 0.136 | 0.118 | 0.144 | 0.154 | 0.154 | 0.118 | 0.221 | 21.4 |
+| 20×20 | 400 | 0.153 | 0.148 | 0.139 | 0.152 | 0.148 | 0.148 | 0.139 | 0.153 | 3.4 |
+| 30×30 | 900 | 0.195 | 0.246 | 0.209 | 0.224 | 0.197 | 0.214 | 0.195 | 0.246 | 10.3 |
+| 40×40 | 1600 | 0.289 | 0.300 | 0.251 | 0.280 | 0.311 | 0.286 | 0.251 | 0.311 | 7.8 |
+| 50×50 | 2500 | 0.352 | 0.346 | 0.334 | 0.386 | 0.371 | 0.358 | 0.334 | 0.386 | 5.8 |
+| 60×60 | 3600 | 0.416 | 0.448 | 0.418 | 0.421 | 0.445 | 0.430 | 0.416 | 0.448 | 3.5 |
+| 70×70 | 4900 | 0.501 | 0.544 | 0.496 | 0.505 | 0.554 | 0.520 | 0.496 | 0.554 | 4.8 |
+| 80×80 | 6400 | 0.609 | 0.638 | 0.639 | 0.567 | 0.596 | 0.610 | 0.567 | 0.639 | 4.7 |
+| 90×90 | 8100 | 0.781 | 0.757 | 0.735 | 0.775 | 0.733 | 0.756 | 0.733 | 0.781 | 2.9 |
+| 100×100 | 10000 | 0.876 | 0.908 | 0.909 | 0.877 | 0.870 | 0.888 | 0.870 | 0.909 | 2.0 |
 
-The relationship between grid size and mean runtime is shown in the figure
-below, with error bars showing the minimum and maximum observed runtimes.
+All times are in seconds. CV (%) is the coefficient of variation
+(standard deviation / mean × 100), a normalised measure of variability.
+The high CV at 10×10 (21.4%) reflects Python startup overhead dominating
+at this scale. For all larger grids the CV is below 11%, and falls
+consistently toward 2% at 100×100, confirming that 5 runs gives reliable
+measurements at meaningful grid sizes.
+
+The relationship between grid size and mean runtime is shown below, with
+error bars showing the minimum and maximum observed runtimes.
 
 ![Runtime vs Grid Size](results/runtime_vs_gridsize.png)
 
+### Profiling Results
+
+The following table shows the top functions by cumulative time when running
+the simulation on a 100×100 landscape for 100 timesteps, obtained using
+`cProfile`:
+
+| Function | Calls | Total time (s) | Cumulative time (s) | % of total |
+|----------|-------|----------------|---------------------|------------|
+| `sim()` | 1 | 0.156 | 1.820 | 100% |
+| `find_nearest()` | 13,479 | 0.914 | 1.019 | 56% |
+| `move_insects()` | 20 | 0.064 | 0.814 | 45% |
+| `move_lizards()` | 50 | 0.067 | 0.336 | 18% |
+| `grow_berries()` | 100 | 0.270 | 0.298 | 16% |
+| `calculate_average_distance()` | 2 | 0.142 | 0.178 | 10% |
+| `deque.append` | 1,125,496 | 0.039 | 0.039 | 2% |
+| `abs()` | 892,800 | 0.036 | 0.036 | 2% |
+| `random()` | 1,009,090 | 0.032 | 0.032 | 2% |
+| `deque.popleft` | 868,419 | 0.028 | 0.028 | 2% |
+
 ## Discussion
 
-The results clearly show that runtime increases with grid size, which is
-consistent with the hypothesis. However, the relationship is sub-linear rather
-than super-linear over this range of grid sizes. Specifically, going from 100
-cells (10×10) to 10,000 cells (100×100) — a 100-fold increase in cells —
-produces only a roughly 6-fold increase in mean runtime (0.154s to 0.888s).
-This can be explained by examining the specific code in `simulate_insect.py`.
+The timing results clearly show that runtime increases with grid size,
+consistent with the hypothesis. However, the relationship is sub-linear
+rather than super-linear over this range of grid sizes. Going from 100
+cells (10×10) to 10,000 cells (100×100) — a 100-fold increase — produces
+only a roughly 6-fold increase in mean runtime (0.154s to 0.888s). The
+profiling data explains why.
 
-**Dominant cost: nested cell loops.** The main simulation loop in `sim()`
-contains multiple nested `for row / for col` loops that iterate over every
-cell in the grid each timestep. This contributes an O(N) cost per timestep,
-where N is the number of cells. With 100 fixed timesteps, this gives O(100N)
-total, which is consistent with the approximately linear growth seen in the
-results. For example, going from 10×10 (100 cells) to 50×50 (2,500 cells) —
-a 25-fold increase — produces approximately a 2.3-fold increase in runtime,
-which is closer to O(N^0.6) empirically, suggesting that fixed overheads still
-play a role at these scales.
+**`find_nearest()` is the dominant cost (56% of total runtime).** The BFS
+function is called 13,479 times in 100 timesteps on a 100×100 grid — once
+per animal per movement timestep. Its high total time (0.914s) confirms that
+movement is the bottleneck, not the cell loops. However, the per-call cost
+is only 0.000076s on average, because in practice BFS terminates early when
+it finds its target rather than exploring the whole grid.
 
-**BFS cost is bounded in practice.** While BFS has a worst-case cost of O(N)
-per animal, two factors limit its cost in practice. First, the lizard view
-radius parameter (`-n`, default 3) limits each lizard BFS to a small diamond
-of at most 12 cells regardless of grid size. Second, insect BFS terminates as
-soon as the nearest berry is found, so in practice it rarely explores the
-whole grid. This explains why the overall scaling is closer to O(N) than the
-O(N^2) worst case that would result if BFS explored the full grid for every
-animal every timestep.
+**Lizard BFS is bounded by the view radius.** The lizard view radius
+parameter (`-n`, default 3) limits each lizard BFS to a small diamond of
+at most 12 cells regardless of grid size. This is why `move_lizards()`
+contributes only 18% of total runtime despite being called 50 times (every
+2 timesteps), while `move_insects()` contributes 45% despite being called
+only 20 times (every 5 timesteps) — insect BFS is unbounded and must search
+further to find berries.
 
-**Python startup overhead dominates at small scales.** The 10×10 result shows
-the highest relative variability (0.118s to 0.221s, a range of 0.103s). At
-this scale, Python interpreter startup and module import time (numpy, argparse,
-collections etc.) make up a significant fraction of the total measured time,
-causing high run-to-run variability. This effect diminishes as grid size grows
-and computation dominates over startup time.
+**`grow_berries()` is unexpectedly costly (16% of total runtime).** Despite
+being a simple loop with a random number check per cell, it is called 100
+times (every timestep) and accounts for 0.270s of total time. This is
+because it calls `random.random()` once per empty land cell per timestep.
+With ~9,200 empty cells on a 100×100 grid, this generates approximately
+920,000 random numbers just for berry growth — consistent with the 1,009,090
+`random()` calls shown in the profiling output.
 
-**The simulation is CPU-bound at large scales.** At 100×100, the variability
-across runs is very low (0.870s to 0.909s, a range of only 0.039s), and the
-mean and minimum are close together. This confirms that at this scale the
-simulation is dominated by computation rather than system overhead or I/O,
-and that 5 runs gives a reliable estimate of typical runtime.
+**`calculate_average_distance()` is costly despite few calls (10%).** It is
+called only twice (at timestep 0 output) but takes 0.142s total due to its
+O(I × B) complexity, where I is the number of insects and B the number of
+berries. With ~800 insects and ~438 berries, this involves approximately
+350,400 distance calculations per call.
+
+**Python startup overhead dominates at small scales.** The 10×10 CV of 21.4%
+reflects Python interpreter startup and module import time making up a
+significant fraction of the 0.154s mean runtime at this scale. This effect
+disappears at larger grid sizes as computation dominates, with CV falling
+to 2.0% at 100×100.
 
 ## Next Steps
 
-1. **Extend to larger grid sizes.** This experiment only covers up to 100×100
+1. **Extend to larger grid sizes.** The experiment only covers up to 100×100
    (10,000 cells). Running up to 500×500 or 1,000×1,000 would reveal whether
    the approximately linear scaling continues or becomes super-linear as BFS
    searches cover larger areas and animal populations grow proportionally.
+   Based on the profiling results, we would expect `find_nearest()` to become
+   increasingly dominant as insect BFS searches larger areas.
 
-2. **Profile to isolate the cost of BFS.** Using Python's `cProfile` module
-   would confirm whether `find_nearest()` or the main cell loops dominate
-   runtime at each grid size. A simple comparison could be made by running
-   with movement disabled (setting `-j` and `-m` to a value larger than the
-   cutoff) against standard runs to isolate the BFS contribution.
+2. **Investigate the effect of lizard view radius on runtime.** The profiling
+   shows that lizard BFS is currently cheap due to the small default view
+   radius of 3. An experiment varying `-n` from 1 to 20 on a fixed 100×100
+   grid would quantify the point at which lizard BFS becomes a significant
+   cost and whether it grows quadratically with radius as expected.
 
-3. **Investigate the effect of lizard view radius.** The view radius parameter
-   `-n` directly controls the maximum BFS depth for lizards. Increasing `-n`
-   should increase runtime as the search diamond grows quadratically with
-   radius. An experiment varying `-n` from 1 to 20 on a fixed large grid would
-   quantify this effect and determine whether it becomes the dominant cost at
-   large radii.
+3. **Optimise `grow_berries()` using NumPy vectorisation.** Profiling shows
+   this function accounts for 16% of runtime despite its apparent simplicity,
+   due to calling `random.random()` once per empty cell per timestep. Replacing
+   this with a single `np.random` call to generate all random values at once
+   would significantly reduce this cost. For example:
+   `grid_next[(landscape == 1) & (grid == 0) & (np.random.random(grid.shape) < berry_growth)] = BERRY`
 
-4. **Replace Python loops with NumPy vectorisation.** The nested cell loops
-   are the dominant cost and could potentially be replaced with NumPy array
-   operations, which are implemented in C and avoid Python interpreter overhead
-   for each cell. This is the most promising optimisation for this program and
-   could give a significant speedup without changing the simulation logic.
+4. **Optimise `calculate_average_distance()` for large populations.** This
+   function has O(I × B) complexity and already accounts for 10% of runtime
+   at just two calls. On larger grids with proportionally more insects and
+   berries, this could become the dominant cost. A spatial index such as a
+   k-d tree (available via `scipy.spatial.KDTree`) would reduce this to
+   O((I + B) log B), which would be a significant improvement at large scales.
