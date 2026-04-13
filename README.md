@@ -236,7 +236,10 @@ s2793337/
     simulate_insect.py      # Main simulation code
   test/
     __init__.py
+    test_example.py         # Original minimal test provided with coursework
     test_regression.py      # All automated tests (73 tests)
+    baselines/
+      expected_averages_10x20.csv  # Baseline CSV for regression testing
   landscapes/
     *.dat                   # Provided landscape files
     experiment/             # Generated landscape files for performance experiment
