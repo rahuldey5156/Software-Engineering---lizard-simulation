@@ -113,7 +113,7 @@ improvements made as a result of pylint analysis include:
 - Extracted `_render_lizard()` to reduce `write_ppm()` complexity
 - Added `.pylintrc` configuration documenting intentional suppressions
 
-The original code scored **8.36/10**. After all improvements the final score
+The original code scored **7.73/10**. After all improvements the final score
 is **10.00/10**. To reproduce:
 
 ```console
