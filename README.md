@@ -6,7 +6,7 @@
 * [numpy](https://numpy.org/)
 * [pytest](https://pytest.org/)
 * [pytest-cov](https://pytest-cov.readthedocs.io/) (for test coverage reports)
-* [matplotlib](https://matplotlib.org/) (for reproducing the performance experiment graph only)
+* [matplotlib](https://matplotlib.org/) (for reproducing the performance experiment graphs only)
 * [pylint](https://pylint.org/) (for static code analysis only)
 * [ImageMagick](https://imagemagick.org/) (optional, for generating animated GIFs)
 
@@ -88,6 +88,7 @@ exit code if:
 * The landscape file does not exist or cannot be read
 * The landscape file header is malformed or missing
 * Landscape cell values contain anything other than 0 or 1
+* The number of values per row does not match the declared width
 * Probability parameters (`-b`, `-c`, `-i`, `-l`) are outside [0.0, 1.0]
 * Integer parameters (`-j`, `-m`, `-n`, `-o`, `-x`) are not positive integers
 
@@ -112,13 +113,13 @@ A plain-text CSV file `averages.csv` is written with statistics at every
 `output-ts` timesteps:
 
 ```csv
-Timestep,# Berries,# Insects,Avg distance to berry,# Lizards,Avg distance to insect
+Timestep,# Fruit,# Insects,Avg distance to berry,# Lizards, Avg distance to insect
 ```
 
 where:
 
 * `Timestep`: current timestep
-* `# Berries`: total number of berries on the landscape
+* `# Fruit`: total number of berries on the landscape
 * `# Insects`: total number of insects on the landscape
 * `Avg distance to berry`: average Manhattan distance from each insect to its nearest berry
 * `# Lizards`: total number of lizards on the landscape
@@ -171,9 +172,15 @@ All tests are in `test/test_regression.py` and cover:
   file creation on multiple landscape files
 * Edge case tests covering 0x0, 1x1, all-water, all-land, wide, tall,
   island and corner landscapes
-* Boundary tests for all probability and integer parameters
+* No-entity tests covering simulations with no berries, no insects and
+  no lizards present
+* Movement interval edge cases with `j=1` and `m=1`
+* Boundary tests for all probability and integer parameters at their limits
 * Reproducibility tests verifying same seed gives identical output
-* Invalid input handling tests
+* Invalid input handling tests for missing files, malformed landscapes
+  and out-of-range parameters
+* PPM content verification tests for water, berry, insect and lizard cells
+* Branch coverage tests for all error handling paths in `load_landscape`
 
 Run all tests from the repository root:
 
@@ -184,14 +191,16 @@ $ pytest test/test_regression.py -v
 Expected output:
 
 ```
-73 passed in ~5s
+84 passed in ~6s
 ```
 
-To run tests with coverage report:
+To run tests with a coverage report:
 
 ```console
 $ pytest test/test_regression.py --cov=insect --cov-report=term-missing
 ```
+
+Current coverage: **77%** of `simulate_insect.py`.
 
 To run static analysis:
 
@@ -199,15 +208,15 @@ To run static analysis:
 $ pylint insect/simulate_insect.py
 ```
 
-Expected pylint score: 10.00/10.
+Expected pylint score: **10.00/10**.
 
 ---
 
 ## Performance experiment
 
 The performance experiment investigates how grid size affects simulation
-runtime. Full details, including profiling results and analysis, are in
-[PERFORMANCE.md](PERFORMANCE.md).
+runtime, including profiling analysis of which functions dominate execution
+time. Full details are in [PERFORMANCE.md](PERFORMANCE.md).
 
 To reproduce the full experiment:
 
@@ -215,6 +224,8 @@ To reproduce the full experiment:
 $ python3 scripts/generate_landscapes.py
 $ python3 scripts/run_experiment.py
 $ python3 scripts/plot_results.py
+$ python3 scripts/plot_cv.py
+$ python3 scripts/plot_profiling.py
 ```
 
 To reproduce the profiling results:
@@ -223,7 +234,11 @@ To reproduce the profiling results:
 $ python3 scripts/profile_simulation.py
 ```
 
-Results are saved to `results/runtime_vs_gridsize.png`.
+Results are saved to:
+* `results/runtime_vs_gridsize.png` — runtime vs grid size with error bars
+* `results/cv_by_gridsize.png` — coefficient of variation by grid size
+* `results/profiling_breakdown.png` — runtime breakdown by function
+* `results/experiment_simulation.gif` — animated GIF of experiment landscape
 
 ---
 
@@ -233,28 +248,36 @@ Results are saved to `results/runtime_vs_gridsize.png`.
 s2793337/
   insect/
     __init__.py
-    simulate_insect.py      # Main simulation code
+    simulate_insect.py          # Main simulation code (pylint 10.00/10)
   test/
     __init__.py
-    test_example.py         # Original minimal test provided with coursework
-    test_regression.py      # All automated tests (73 tests)
+    test_example.py             # Original minimal test provided with coursework
+    test_regression.py          # All automated tests (84 tests, 77% coverage)
     baselines/
       expected_averages_10x20.csv  # Baseline CSV for regression testing
   landscapes/
-    *.dat                   # Provided landscape files
-    experiment/             # Generated landscape files for performance experiment
+    *.dat                       # Provided landscape files (20 files)
+    experiment/                 # Generated all-land landscape files for experiment
   scripts/
-    generate_landscapes.py  # Generates landscape files for the experiment
-    run_experiment.py       # Times the simulation across grid sizes
-    plot_results.py         # Plots the results graph
-    profile_simulation.py   # Profiles the simulation using cProfile
+    generate_landscapes.py      # Generates experiment landscape files
+    run_experiment.py           # Times the simulation across grid sizes (5 runs each)
+    plot_results.py             # Plots runtime vs grid size with error bars
+    plot_cv.py                  # Plots coefficient of variation by grid size
+    plot_profiling.py           # Plots profiling breakdown pie chart
+    profile_simulation.py       # Profiles the simulation using cProfile
   results/
-    runtime_vs_gridsize.png # Performance experiment graph
-    simulation.gif          # Animated GIF of the simulation
-  .pylintrc                 # Pylint configuration
-  requirements.txt          # Python dependencies
-  README.md                 # This file
-  PERFORMANCE.md            # Performance experiment report
+    runtime_vs_gridsize.png     # Performance experiment graph
+    cv_by_gridsize.png          # Measurement reliability graph
+    profiling_breakdown.png     # Runtime breakdown by function
+    simulation.gif              # Animated GIF of simulation on map.dat
+    experiment_simulation.gif   # Animated GIF of simulation on 50x50 experiment landscape
+    initial_run_images/         # PPM images from initial simulation run
+  .gitignore                    # Excludes PPM files, averages.csv, __pycache__
+  .gitlab-ci.yml                # GitLab CI pipeline configuration
+  .pylintrc                     # Pylint configuration (disables inherent warnings)
+  requirements.txt              # Python dependencies
+  README.md                     # This file
+  PERFORMANCE.md                # Performance experiment report
 ```
 
 ---
