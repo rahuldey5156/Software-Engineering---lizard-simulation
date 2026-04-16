@@ -923,3 +923,143 @@ def test_ppm_lizard_diamond(tmp_path):
         assert g == 200
     finally:
         os.chdir(original_dir)
+
+# ── No-entity edge case tests ─────────────────────────────────────────────────
+
+def test_simulation_no_berries():
+    """Simulation with no berries should run correctly — insects cannot eat."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-b", "0.0", "-c", "0.0",
+        "-s", "1", "-x", "20", "-o", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Berries: 0" in result.stdout
+
+
+def test_simulation_no_insects():
+    """Simulation with no insects should run correctly — lizards have no prey."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-i", "0.0",
+        "-s", "1", "-x", "20", "-o", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Insects: 0" in result.stdout
+
+
+def test_simulation_no_lizards():
+    """Simulation with no lizards should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-l", "0.0",
+        "-s", "1", "-x", "20", "-o", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Lizards: 0" in result.stdout
+
+
+def test_simulation_insect_move_every_timestep():
+    """Simulation with insect movement every timestep should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-j", "1",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_simulation_lizard_move_every_timestep():
+    """Simulation with lizard movement every timestep should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-m", "1",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_simulation_large_lizard_view_radius():
+    """Simulation with large lizard view radius should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-n", "20",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_collect_positions_no_berries():
+    """collect_positions should return empty berry list when no berries exist."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    grid[2, 2] = simulate_insect.INSECT
+    grid[1, 1] = simulate_insect.LIZARD
+    berries, insects, lizards = simulate_insect.collect_positions(
+        grid, lscape, 3, 3)
+    assert berries == []
+    assert len(insects) == 1
+    assert len(lizards) == 1
+
+
+def test_collect_positions_no_insects():
+    """collect_positions should return empty insect list when no insects exist."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    grid[2, 2] = simulate_insect.BERRY
+    grid[1, 1] = simulate_insect.LIZARD
+    berries, insects, lizards = simulate_insect.collect_positions(
+        grid, lscape, 3, 3)
+    assert len(berries) == 1
+    assert insects == []
+    assert len(lizards) == 1
+
+
+def test_collect_positions_no_lizards():
+    """collect_positions should return empty lizard list when no lizards exist."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    grid[2, 2] = simulate_insect.BERRY
+    grid[1, 1] = simulate_insect.INSECT
+    berries, insects, lizards = simulate_insect.collect_positions(
+        grid, lscape, 3, 3)
+    assert len(berries) == 1
+    assert len(insects) == 1
+    assert lizards == []
+
+
+def test_move_insects_every_timestep():
+    """Insects should move correctly when move interval is 1."""
+    lscape = make_landscape(3, 5)
+    grid = np.zeros((5, 7), int)
+    grid[2, 2] = simulate_insect.INSECT
+    grid[2, 5] = simulate_insect.BERRY
+    grid_next = grid.copy()
+    simulate_insect.move_insects(grid, grid_next, lscape, 5, 3)
+    assert grid_next[2, 2] == simulate_insect.EMPTY
+    assert grid_next[2, 3] == simulate_insect.INSECT
+
+
+def test_move_lizards_large_view_radius():
+    """Lizard should find insect even with large view radius."""
+    lscape = make_landscape(1, 10)
+    grid = np.zeros((3, 12), int)
+    grid[1, 1] = simulate_insect.LIZARD
+    grid[1, 5] = simulate_insect.INSECT
+    grid_next = grid.copy()
+    simulate_insect.move_lizards(grid, grid_next, lscape, 10, 1,
+                                  lizard_view_radius=10)
+    assert grid_next[1, 1] == simulate_insect.EMPTY
+    assert grid_next[1, 2] == simulate_insect.LIZARD
