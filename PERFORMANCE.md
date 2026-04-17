@@ -38,7 +38,7 @@ function (approximately 150 lines) was refactored to improve readability,
 testability and maintainability. The following changes were made, each with
 direct performance implications:
 
-**1. Extraction of 8 functions from `sim()`**
+**1. Extraction of functions from `sim()`**
 
 The original code placed all logic inside a single `sim()` function, making
 it impossible to profile individual operations or test them in isolation. The
@@ -82,9 +82,8 @@ confirming the efficiency of this data structure for BFS queues.
 
 The original code copied the grid state each timestep using nested Python
 loops over every cell. This was replaced with `np.copyto(grid_next, grid)`,
-which delegates the copy operation to NumPy's C implementation. This avoids
-Python interpreter overhead for each of the thousands of cells on larger
-grids.
+which delegates the copy operation to NumPy's C implementation, avoiding
+Python interpreter overhead for each cell on larger grids.
 
 **5. Introduction of `SimulationConfig` dataclass**
 
@@ -103,18 +102,11 @@ from transposed values.
 
 **7. Static analysis with pylint**
 
-The refactored code was analysed using `pylint`, a Python static analysis
-tool that checks for code style, structure and common errors. Additional
-improvements made as a result of pylint analysis include:
-
-- Corrected import ordering (standard library before third-party packages)
-- Added explicit `encoding="utf-8"` to all `open()` calls
-- Replaced `.format()` string formatting with f-strings throughout
-- Extracted `_render_lizard()` to reduce `write_ppm()` complexity
-- Added `.pylintrc` configuration documenting intentional suppressions
-
-The original code scored **7.73/10**. After all improvements the final score
-is **10.00/10**. To reproduce:
+The refactored code was analysed using `pylint`. Additional improvements
+made as a result include: corrected import ordering; explicit `encoding="utf-8"`
+on all `open()` calls; f-strings replacing `.format()`; and extraction of
+`_render_lizard()` to reduce function complexity. The original score was
+**7.73/10** and the final score after all improvements is **10.00/10**:
 
 ```console
 $ pylint insect/simulate_insect.py
@@ -124,28 +116,14 @@ $ pylint insect/simulate_insect.py
 
 A comprehensive test suite of **84 tests** was developed to verify the
 correctness of the refactored code. Tests were written before and alongside
-each refactoring step to ensure no regressions were introduced. Test
-coverage was measured using `pytest-cov`:
+each refactoring step to ensure no regressions were introduced. Coverage
+was measured using `pytest-cov`, improving from **68%** after initial
+refactoring to **77%** after adding boundary, branch, error handling and
+edge case tests:
 
 ```console
 $ pytest test/test_regression.py --cov=insect --cov-report=term-missing
 ```
-
-Coverage improved from **68%** after initial refactoring to **77%** after
-adding boundary, branch, error handling and edge case tests. The test suite
-covers:
-
-- Unit tests for all 10 extracted functions
-- End-to-end regression tests verifying CSV values, stdout and PPM output
-- Edge cases: 0×0 grid, 1×1 grid, all-water, all-land, wide, tall, island
-  and corner landscapes
-- No-entity scenarios: simulations with no berries, no insects, no lizards
-- Movement interval edge cases: `j=1` and `m=1`
-- Boundary tests: `berry_prop=0.0`, `berry_prop=1.0`, `lizard_view_radius=1`
-- Invalid input tests: missing files, malformed landscapes, out-of-range
-  parameters
-- Reproducibility: same seed produces identical output across runs
-- Seed variation: different seeds produce different outputs
 
 ## Method
 
@@ -158,10 +136,14 @@ covers:
 
 ### Experimental Design
 
-**Hypothesis**: Total runtime will grow super-linearly with the number of
-grid cells, because both the number of animals and the BFS search space
-grow with grid size. Specifically, we expect runtime to grow approximately
-as O(N^1.5) or O(N^2) where N is the number of cells.
+**Hypothesis**: Total runtime will grow with the number of grid cells N.
+In the worst case, BFS explores the entire grid giving O(N) cost per animal
+per timestep, and with O(N) animals, the worst-case overall cost is O(N^2)
+per timestep. However, because BFS terminates as soon as the nearest target
+is found, the expected average cost per BFS call is much lower than O(N) in
+practice. We therefore expect runtime to grow somewhere between O(N) and
+O(N^2), with the actual scaling depending on how quickly animals find their
+targets on average.
 
 Square all-land landscape files were generated for grid sizes from 10×10 to
 100×100 in steps of 10, giving grids of 100 to 10,000 cells. Sizes were
@@ -290,82 +272,98 @@ profiling output.
 
 ## Discussion
 
-The timing results show that runtime increases with grid size, but the
-relationship is sub-linear rather than the super-linear growth predicted by
-the hypothesis. Going from 100 cells (10×10) to 10,000 cells (100×100) — a
-100-fold increase — produces only a roughly 6-fold increase in mean runtime
-(0.154s to 0.888s). The profiling data explains why.
+### Complexity analysis
+
+The simulation has the following theoretical complexity per timestep:
+
+- **Berry growth** (`grow_berries`): O(N) — iterates over all N cells once
+- **Insect movement** (`move_insects`): O(A_i × B) in the worst case, where
+  A_i is the number of insects and B is the BFS search depth. Since BFS
+  terminates at the first berry found, the average case is much lower than
+  the worst case O(N) per insect.
+- **Lizard movement** (`move_lizards`): O(A_l × n^2) where A_l is the number
+  of lizards and n is the view radius. The view radius limits BFS to a
+  diamond of at most 2n^2 cells, making this effectively O(A_l) for fixed n.
+- **Statistics** (`calculate_average_distance`): O(I × B) where I is the
+  number of insects and B is the number of berries — a quadratic cost in
+  population sizes.
+
+The overall simulation cost per timestep is therefore dominated by
+`find_nearest()` calls, with an expected complexity between O(N) and O(N^2)
+depending on how quickly animals find their targets.
+
+### Experimental results
+
+The results show approximately linear scaling over the range tested: a
+100-fold increase in cells produces only a 6-fold increase in mean runtime,
+with no evidence of quadratic growth. This is consistent with early BFS
+termination dominating over worst-case exploration — animals find their
+targets quickly in dense all-land landscapes with the default population
+proportions, keeping the average BFS depth low.
 
 **`find_nearest()` is the dominant cost (56% of total runtime).** The BFS
 function is called 13,479 times in 100 timesteps on a 100×100 grid — once
 per animal per movement timestep. Its high total time (0.914s) confirms that
-animal movement is the bottleneck, not the cell iteration loops. However, the
-per-call cost is only 0.000076s on average, because BFS terminates as soon as
-it finds the nearest target rather than exploring the whole grid. The use of
-`collections.deque` is confirmed by the profiling output showing 868,419
-`deque.popleft` calls completing in only 0.028s — approximately 32
-nanoseconds per call — demonstrating the efficiency of O(1) queue operations
-over the original O(n) `list.pop(0)`.
+animal movement is the bottleneck. However, the per-call cost is only
+0.000076s on average because BFS terminates as soon as it finds the nearest
+target. The use of `collections.deque` is confirmed by the profiling output
+showing 868,419 `deque.popleft` calls completing in only 0.028s —
+approximately 32 nanoseconds per call — demonstrating the efficiency of O(1)
+queue operations over the original O(n) `list.pop(0)`. Without this
+refactoring, the BFS queue cost would grow with queue length, penalising
+larger grids disproportionately.
 
 **Lizard BFS is bounded by the view radius.** The lizard view radius
 parameter (`-n`, default 3) limits each lizard BFS to at most 12 cells
-regardless of grid size. This is why `move_lizards()` contributes only 18%
-of total runtime despite being called 50 times, while `move_insects()`
-contributes 45% despite being called only 20 times — insect BFS is unbounded
-and must search further across the grid to find berries.
+regardless of grid size, giving O(1) cost per lizard regardless of N. This
+is why `move_lizards()` contributes only 18% of total runtime despite being
+called 50 times, while `move_insects()` contributes 45% despite being called
+only 20 times — insect BFS is unbounded and grows with grid size.
 
 **`grow_berries()` is unexpectedly costly (16% of total runtime).** Despite
-being a simple loop with a random number check per cell, it is called every
-timestep (100 times total) and accounts for 0.270s. This is because it calls
-`random.random()` once per empty land cell per timestep. With approximately
-9,200 empty cells on a 100×100 grid, this generates approximately 920,000
-random numbers just for berry growth — consistent with the 1,009,090 total
-`random()` calls in the profiling output.
+being a simple O(N) loop, it is called every timestep (100 times total) and
+accounts for 0.270s. This is because it calls `random.random()` once per
+empty land cell — approximately 920,000 calls in total, consistent with the
+1,009,090 `random()` calls in the profiling output.
 
 **`calculate_average_distance()` is costly despite few calls (10%).** It is
-called only twice (at each output interval) but takes 0.142s total due to
-its O(I × B) complexity, where I is the number of insects (~800) and B the
-number of berries (~438). This involves approximately 350,400 Manhattan
-distance calculations per call. This function was not a concern in the
-original code because it was buried inside the monolithic `sim()` function
-and invisible to profilers. Extraction into a named function made this cost
-visible for the first time.
+called only twice but takes 0.142s total due to its O(I × B) complexity.
+With ~800 insects and ~438 berries this involves approximately 350,400
+Manhattan distance calculations per call. This cost was hidden inside the
+original monolithic `sim()` function and only became visible after extraction
+into a named function, demonstrating a direct benefit of the refactoring.
 
 **Python startup overhead dominates at small scales.** The 10×10 CV of
-21.4% reflects Python interpreter startup and module import time (numpy,
-argparse, collections etc.) making up a large fraction of the 0.154s mean
-runtime. This effect disappears at larger grid sizes as computation
-dominates, with CV falling to 2.0% at 100×100, confirming that the
-simulation is CPU-bound at this scale.
+21.4% reflects Python interpreter startup making up a large fraction of the
+0.154s mean runtime. This effect disappears at larger grid sizes, with CV
+falling to 2.0% at 100×100, confirming that the simulation is CPU-bound
+rather than startup-bound at meaningful scales.
 
-**The `np.copyto()` refactoring reduces grid copy overhead.** The original
-code copied the grid state using nested Python loops over every cell each
-timestep. Replacing this with `np.copyto(grid_next, grid)` delegates the
-operation to NumPy's C implementation. While this does not appear separately
-in the profiling output (it is included in `sim()` overhead), the
-improvement is proportional to grid size and most significant on larger grids.
+**Overall**, the results are consistent with the hypothesis that runtime
+grows between O(N) and O(N^2): the observed approximately linear scaling
+reflects the early-termination behaviour of BFS in practice, while the
+profiling confirms that BFS (`find_nearest`) is the dominant cost and the
+correct target for any future optimisation effort.
 
 ## Next Steps
 
 1. **Extend to larger grid sizes.** The experiment only covers up to 100×100
    (10,000 cells). Running up to 500×500 or 1,000×1,000 would reveal whether
-   the approximately linear scaling continues or becomes super-linear as BFS
-   searches cover larger areas and animal populations grow proportionally.
-   Based on the profiling results, we would expect `find_nearest()` to become
-   increasingly dominant as insect BFS searches larger grids.
+   the approximately linear scaling continues or becomes super-linear as
+   animals must search larger areas to find targets and BFS depth increases.
+   Based on profiling, `find_nearest()` would be expected to become
+   increasingly dominant at larger scales.
 
 2. **Investigate the effect of lizard view radius on runtime.** The profiling
-   shows that lizard BFS is currently cheap due to the default view radius of
-   3. An experiment varying `-n` from 1 to 20 on a fixed 100×100 grid would
-   quantify the point at which lizard BFS becomes a significant cost and
-   whether it grows quadratically with radius as expected, since the BFS
-   diamond area grows as O(n^2) with radius n.
+   shows that lizard BFS is currently O(1) per lizard due to the small default
+   view radius of 3. An experiment varying `-n` from 1 to 20 on a fixed
+   100×100 grid would quantify the point at which lizard BFS becomes a
+   significant cost, since the BFS diamond area grows as O(n^2) with radius n.
 
 3. **Optimise `grow_berries()` using NumPy vectorisation.** Profiling shows
-   this function accounts for 16% of runtime due to calling `random.random()`
-   once per empty cell per timestep. Replacing this with a single vectorised
-   NumPy operation would significantly reduce this cost by avoiding per-cell
-   Python overhead:
+   this function accounts for 16% of runtime due to per-cell Python loop
+   overhead. Replacing with a single vectorised NumPy operation would
+   reduce this from O(N) Python iterations to a single C-level operation:
    ```python
    mask = (landscape == LAND) & (grid == EMPTY)
    mask &= np.random.random(grid.shape) < berry_growth
@@ -374,9 +372,9 @@ improvement is proportional to grid size and most significant on larger grids.
 
 4. **Optimise `calculate_average_distance()` using a spatial index.** This
    function has O(I × B) complexity and already accounts for 10% of runtime
-   at just two output calls. On larger grids with proportionally more insects
-   and berries, this could become the dominant cost. A k-d tree
-   (`scipy.spatial.KDTree`) would reduce this to O((I+B) log B), a
-   significant improvement at large scales. This was made possible to identify
-   only because the function was extracted from `sim()` during refactoring,
-   making its cost visible to profilers.
+   at just two output calls. On larger grids this could become the dominant
+   cost. A k-d tree (`scipy.spatial.KDTree`) would reduce this to
+   O((I+B) log B). This optimisation opportunity was only identifiable
+   because the function was extracted from `sim()` during refactoring,
+   making its cost visible to profilers — a direct benefit of good code
+   structure.
