@@ -1,2 +1,5 @@
 **/__pycache__/
 *.ppm
+averages.csv
+*.pyc
+.DS_Store

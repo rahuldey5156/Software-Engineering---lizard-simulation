@@ -546,3 +546,520 @@ def test_invalid_berry_prop():
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode != 0
     assert "Error" in result.stderr
+
+# ── Extended landscape tests ──────────────────────────────────────────────────
+
+def test_zero_dimension_landscape():
+    """Simulation on 0x0 landscape should run without error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/0x0.dat",
+        "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_single_land_cell_landscape():
+    """Simulation on 1x1 all-land landscape should run without error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/1x1land.dat",
+        "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_single_water_cell_landscape():
+    """Simulation on 1x1 all-water landscape should run without error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/1x1water.dat",
+        "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_wide_landscape():
+    """Simulation on a wide 50x1 landscape should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/50x1.dat",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Width: 50 Height: 1" in result.stdout
+
+
+def test_tall_landscape():
+    """Simulation on a tall 1x50 landscape should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/1x50.dat",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Width: 1 Height: 50" in result.stdout
+
+
+def test_two_islands_landscape():
+    """Simulation on two_square_islands landscape should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/two_square_islands.dat",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert result.returncode == 0
+
+
+def test_corner_landscape():
+    """Simulation on 20x20corner landscape (land only in corner) should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20corner.dat",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_asymmetric_landscape():
+    """Simulation on non-square 40x20 landscape should produce correct dimensions."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/40x20ps.dat",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Width: 40 Height: 20" in result.stdout
+
+
+def test_non_default_parameters():
+    """Simulation with non-default parameters should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-s", "42",
+        "-x", "30",
+        "-b", "0.1",
+        "-i", "0.2",
+        "-l", "0.05",
+        "-n", "5",
+        "-j", "3",
+        "-m", "1",
+        "-o", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Insect simulation 1.0" in result.stdout
+
+
+def test_ppm_content_land_cell(tmp_path):
+    """PPM file should contain correct pixel values for land cells with entities."""
+    import os
+    lscape = make_landscape(1, 1)
+    grid = np.zeros((3, 3), int)
+    grid[1, 1] = simulate_insect.BERRY
+    original_dir = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        simulate_insect.write_ppm(0, grid, lscape, 1, 1, lizard_view_radius=3)
+        with open("map_0000.ppm") as f:
+            lines = f.readlines()
+        # Berry cell: red=150, green=0, blue=0
+        assert lines[3].strip() == "150 0 0"
+    finally:
+        os.chdir(original_dir)
+
+
+def test_ppm_content_insect_cell(tmp_path):
+    """PPM file should contain correct pixel values for insect cells."""
+    import os
+    lscape = make_landscape(1, 1)
+    grid = np.zeros((3, 3), int)
+    grid[1, 1] = simulate_insect.INSECT
+    original_dir = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        simulate_insect.write_ppm(0, grid, lscape, 1, 1, lizard_view_radius=3)
+        with open("map_0000.ppm") as f:
+            lines = f.readlines()
+        # Insect cell: red=0, green=0, blue=150
+        assert lines[3].strip() == "0 0 150"
+    finally:
+        os.chdir(original_dir)
+
+
+def test_simulation_reproducible_with_same_seed():
+    """Two runs with the same seed should produce identical averages.csv."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-s", "7", "-x", "30"
+    ]
+    subprocess.run(cmd, check=True, capture_output=True)
+    with open("averages.csv") as f:
+        run1 = f.read()
+
+    subprocess.run(cmd, check=True, capture_output=True)
+    with open("averages.csv") as f:
+        run2 = f.read()
+
+    assert run1 == run2
+
+
+def test_simulation_different_seeds_differ():
+    """Two runs with different seeds should produce different averages.csv."""
+    cmd1 = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-s", "1", "-x", "30"
+    ]
+    cmd2 = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-s", "99", "-x", "30"
+    ]
+    subprocess.run(cmd1, check=True, capture_output=True)
+    with open("averages.csv") as f:
+        run1 = f.read()
+
+    subprocess.run(cmd2, check=True, capture_output=True)
+    with open("averages.csv") as f:
+        run2 = f.read()
+
+    assert run1 != run2
+
+# ── Boundary and branch coverage tests ───────────────────────────────────────
+
+def test_berry_prop_zero():
+    """Simulation with zero berry proportion should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-b", "0.0", "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_berry_prop_one():
+    """Simulation with berry proportion of 1.0 should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-b", "1.0", "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_insect_prop_zero():
+    """Simulation with zero insect proportion should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-i", "0.0", "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_lizard_prop_zero():
+    """Simulation with zero lizard proportion should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-l", "0.0", "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_output_ts_one():
+    """Simulation with output every timestep should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/3x3.dat",
+        "-s", "1", "-x", "5", "-o", "1"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_lizard_view_radius_one():
+    """Simulation with minimum lizard view radius should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-n", "1", "-s", "1", "-x", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_invalid_cutoff():
+    """Zero cutoff should exit with error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-x", "0"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_invalid_output_ts():
+    """Zero output timestep should exit with error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-o", "0"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_invalid_insect_move_ts():
+    """Zero insect move timestep should exit with error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-j", "0"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_invalid_lizard_move_ts():
+    """Zero lizard move timestep should exit with error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-m", "0"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_invalid_insect_prop():
+    """Out-of-range insect proportion should exit with error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-i", "2.0"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_invalid_lizard_prop():
+    """Out-of-range lizard proportion should exit with error."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-l", "-0.5"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_load_landscape_bad_values(tmp_path):
+    """Landscape file with invalid cell values should exit with error."""
+    f = tmp_path / "bad.dat"
+    f.write_text("3 2\n1 1 1\n0 2 0\n")
+    with pytest.raises(SystemExit) as exc:
+        simulate_insect.load_landscape(str(f))
+    assert exc.value.code != 0
+
+
+def test_load_landscape_wrong_row_length(tmp_path):
+    """Landscape file with wrong number of values per row should exit with error."""
+    f = tmp_path / "bad.dat"
+    f.write_text("3 2\n1 1\n0 1 0\n")
+    with pytest.raises(SystemExit) as exc:
+        simulate_insect.load_landscape(str(f))
+    assert exc.value.code != 0
+
+
+def test_load_landscape_bad_header(tmp_path):
+    """Landscape file with malformed header should exit with error."""
+    f = tmp_path / "bad.dat"
+    f.write_text("abc def\n1 1 1\n")
+    with pytest.raises(SystemExit) as exc:
+        simulate_insect.load_landscape(str(f))
+    assert exc.value.code != 0
+
+
+def test_ppm_lizard_diamond(tmp_path):
+    """PPM output should render lizard diamond correctly."""
+    import os
+    lscape = make_landscape(5, 5)
+    grid = np.zeros((7, 7), int)
+    grid[3, 3] = simulate_insect.LIZARD
+    original_dir = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        simulate_insect.write_ppm(0, grid, lscape, 5, 5, lizard_view_radius=2)
+        with open("map_0000.ppm") as f:
+            lines = f.readlines()
+        # Lizard cell should have green channel = 200
+        # PPM data starts at line 3, row 2 (0-indexed), col 2 = line 3 + 2*5 + 2 = line 15
+        lizard_line = lines[3 + 2 * 5 + 2].strip()
+        r, g, b = map(int, lizard_line.split())
+        assert g == 200
+    finally:
+        os.chdir(original_dir)
+
+# ── No-entity edge case tests ─────────────────────────────────────────────────
+
+def test_simulation_no_berries():
+    """Simulation with no berries should run correctly — insects cannot eat."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-b", "0.0", "-c", "0.0",
+        "-s", "1", "-x", "20", "-o", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Berries: 0" in result.stdout
+
+
+def test_simulation_no_insects():
+    """Simulation with no insects should run correctly — lizards have no prey."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-i", "0.0",
+        "-s", "1", "-x", "20", "-o", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Insects: 0" in result.stdout
+
+
+def test_simulation_no_lizards():
+    """Simulation with no lizards should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-l", "0.0",
+        "-s", "1", "-x", "20", "-o", "10"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Lizards: 0" in result.stdout
+
+
+def test_simulation_insect_move_every_timestep():
+    """Simulation with insect movement every timestep should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-j", "1",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_simulation_lizard_move_every_timestep():
+    """Simulation with lizard movement every timestep should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/10x20.dat",
+        "-m", "1",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_simulation_large_lizard_view_radius():
+    """Simulation with large lizard view radius should run correctly."""
+    cmd = [
+        "python3", "-m", "insect.simulate_insect",
+        "-f", "landscapes/20x20land.dat",
+        "-n", "20",
+        "-s", "1", "-x", "20"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_collect_positions_no_berries():
+    """collect_positions should return empty berry list when no berries exist."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    grid[2, 2] = simulate_insect.INSECT
+    grid[1, 1] = simulate_insect.LIZARD
+    berries, insects, lizards = simulate_insect.collect_positions(
+        grid, lscape, 3, 3)
+    assert berries == []
+    assert len(insects) == 1
+    assert len(lizards) == 1
+
+
+def test_collect_positions_no_insects():
+    """collect_positions should return empty insect list when no insects exist."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    grid[2, 2] = simulate_insect.BERRY
+    grid[1, 1] = simulate_insect.LIZARD
+    berries, insects, lizards = simulate_insect.collect_positions(
+        grid, lscape, 3, 3)
+    assert len(berries) == 1
+    assert insects == []
+    assert len(lizards) == 1
+
+
+def test_collect_positions_no_lizards():
+    """collect_positions should return empty lizard list when no lizards exist."""
+    lscape = make_landscape(3, 3)
+    grid = np.zeros((5, 5), int)
+    grid[2, 2] = simulate_insect.BERRY
+    grid[1, 1] = simulate_insect.INSECT
+    berries, insects, lizards = simulate_insect.collect_positions(
+        grid, lscape, 3, 3)
+    assert len(berries) == 1
+    assert len(insects) == 1
+    assert lizards == []
+
+
+def test_move_insects_every_timestep():
+    """Insects should move correctly when move interval is 1."""
+    lscape = make_landscape(3, 5)
+    grid = np.zeros((5, 7), int)
+    grid[2, 2] = simulate_insect.INSECT
+    grid[2, 5] = simulate_insect.BERRY
+    grid_next = grid.copy()
+    simulate_insect.move_insects(grid, grid_next, lscape, 5, 3)
+    assert grid_next[2, 2] == simulate_insect.EMPTY
+    assert grid_next[2, 3] == simulate_insect.INSECT
+
+
+def test_move_lizards_large_view_radius():
+    """Lizard should find insect even with large view radius."""
+    lscape = make_landscape(1, 10)
+    grid = np.zeros((3, 12), int)
+    grid[1, 1] = simulate_insect.LIZARD
+    grid[1, 5] = simulate_insect.INSECT
+    grid_next = grid.copy()
+    simulate_insect.move_lizards(grid, grid_next, lscape, 10, 1,
+                                  lizard_view_radius=10)
+    assert grid_next[1, 1] == simulate_insect.EMPTY
+    assert grid_next[1, 2] == simulate_insect.LIZARD
